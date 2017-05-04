@@ -529,7 +529,7 @@ def obtain_cert_node_info(name, security_dir=None):
         Return dict with domain, node name and node id
     """
 #    _log.debug("obtain_cert_node_info: node_name={}".format(name))
-    nosecuuid = _conf.get('ARGUMENTS', 'uuid') if _conf.get('ARGUMENTS', 'uuid') else calvinuuid.uuid("NODE")
+    nosecuuid = _conf.get('ARGUMENTS', 'uuid') or calvinuuid.uuid("NODE")
     domain = _conf.get("security", "domain_name")
     if domain is None or name is None:
         # No security or name specified just use standard node UUID

@@ -105,7 +105,7 @@ Start runtime, compile calvinscript and deploy application.
                            dest='credentials', default=None)
 
     argparser.add_argument('--uuid', metavar='<uuid>', type=str,
-                            help="Set the UUID of the runtime. This does not apply when security is enabled.",
+                            help="Set the UUID of the runtime. Does not apply when security is enabled.",
                             dest='uuid')
 
     return argparser.parse_args()
