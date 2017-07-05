@@ -33,6 +33,7 @@ from calvin.utilities.calvin_callback import CalvinCB
 from calvin.csparser.port_property_syntax import get_port_property_capabilities, get_port_property_runtime
 from calvin.runtime.north.calvinsys import get_calvinsys
 from calvin.runtime.north.calvinlib import get_calvinlib
+import monitor
 
 _log = get_logger(__name__)
 
@@ -337,6 +338,7 @@ class Actor(object):
     @name.setter
     def name(self, value):
         self._name = value
+        monitor.update_actor(self.monitorId, self._name)
 
     @property
     def migration_info(self):
@@ -383,6 +385,10 @@ class Actor(object):
                              disable_transition_checks=disable_transition_checks,
                              disable_state_checks=disable_state_checks)
         # self.metering.add_actor_info(self)
+        self.monitorId = monitor.register_actor(self._name)
+        self.methodId = []
+        for method in self.__class__.action_priority:
+          self.methodId.append(monitor.register_method(method.__name__))
 
     def set_authorization_checks(self, authorization_checks):
         self.authorization_checks = authorization_checks
@@ -562,6 +568,7 @@ class Actor(object):
         #
         # First make sure we are allowed to run
         #
+        monitor.store(0, self.monitorId, 0)
         if not self._authorized():
             return False
 
@@ -572,12 +579,14 @@ class Actor(object):
         #
         done = False
         while not done:
-            for action_method in self.__class__.action_priority:
+            for ai in range(len(self.__class__.action_priority)):
+                action_method = self.__class__.action_priority[ai]
                 did_fire, output_ok, exhausted = action_method(self)
                 actor_did_fire |= did_fire
                 # Action firing should fire the first action that can fire,
                 # hence when fired start from the beginning priority list
                 if did_fire:
+                    monitor.store(1, self.monitorId, self.methodId[ai])
                     # # FIXME: Add hooks for metering and probing
                     # self.metering.fired(self._id, action_method.__name__)
                     # self.control.log_actor_firing( ... )
@@ -602,6 +611,7 @@ class Actor(object):
                 self._handle_exhaustion(exhausted, output_ok)
                 done = True
 
+        monitor.store(2, self.monitorId, 0)
         return actor_did_fire
 
 

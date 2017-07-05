@@ -16,6 +16,7 @@
 
 import os
 from setuptools import setup
+from Cython.Build import cythonize
 
 
 def read_description(fname):
@@ -83,5 +84,6 @@ setup(name='calvin',
               'csviz=calvin.Tools.csviz:main',
               'csactortest=calvin.Tools.csactortest:main'
           ]
-      }
+      },
+      ext_modules = cythonize("calvin/actor/monitor.pyx")
       )

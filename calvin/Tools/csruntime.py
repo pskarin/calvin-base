@@ -22,6 +22,8 @@ import traceback
 import logging
 import os
 import socket
+import calvin.actor.monitor as monitor
+import atexit
 
 # Calvin related imports must be in functions, to be able to set logfile before imports
 _conf = None
@@ -355,8 +357,13 @@ def runtime_certificate(rt_attributes):
             else:
                 _log.debug("Runtime certificate available")
 
+def exithandler(sig=None, stack=None):
+  monitor.finish()
+  os._exit(0)
 
 def main():
+    atexit.register(exithandler)
+    
     args = parse_arguments()
 
     if args.debug:
