@@ -1,13 +1,16 @@
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import time
+import sys
 
 cdef struct LogEntry:
   unsigned int type
   unsigned long timestamp
   unsigned int actor
   unsigned int method
+  int valueDefined
+  double value
 
-cdef int bufferSize = 100000
+cdef int bufferSize = 1
 cdef LogEntry * buffer = <LogEntry *>PyMem_Malloc(sizeof(LogEntry)*bufferSize)
 
 cdef int bufferIndex = 0
@@ -18,7 +21,6 @@ wrapped = False
 actors=["error"]
 types = ["enter", "trigger", "exit"]
 methods=[""]
-cdef unsigned long startts = 0
 
 def allocate(int size):
   global buffer, bufferIndex, bufferSize
@@ -55,32 +57,32 @@ def register_method(method):
   methodId += 1
   return methodId
 
-def store(int typeid, int actorid, unsigned int methodid):
-  global buffer, bufferIndex, bufferSize,startts,wrapped
+def store(int typeid, int actorid, unsigned int methodid, int valueDefined, double value):
+  global buffer, bufferIndex, bufferSize, wrapped
   buffer[bufferIndex].type = typeid
-  buffer[bufferIndex].timestamp = time.time()*1000000
+  buffer[bufferIndex].timestamp = long(time.time()*1000000)
   buffer[bufferIndex].actor = actorid
   buffer[bufferIndex].method = methodid
+  buffer[bufferIndex].valueDefined = valueDefined
+  buffer[bufferIndex].value = value
   bufferIndex += 1
   if bufferIndex == bufferSize:
-    if startts == 0:
-      startts = buffer[0].timestamp
     bufferIndex = 0
     wrapped = True
   
 
 def finish():
-  global buffer,bufferIndex,bufferSize,actors,methods,startts,wrapped
-  cdef unsigned long ts = buffer[bufferIndex%bufferSize].timestamp
-  start = 0
-  end = bufferIndex
-  if wrapped:
-    start = bufferIndex
-    end = bufferIndex+bufferSize
-  else:
-    startts = buffer[0].timestamp
-  for _i in range(start, end):
-    i = _i%bufferSize;
-    print("{:10d}; {:10s}; {:10s}; {:10s}".format(buffer[i].timestamp-startts, actors[buffer[i].actor], 
-      types[buffer[i].type], methods[buffer[i].method]))
-    startts= buffer[i].timestamp
+  global buffer,bufferIndex,bufferSize,actors,methods,wrapped
+  if bufferSize > 1:
+    start = 0
+    end = bufferIndex
+    if wrapped:
+      start = bufferIndex
+      end = bufferIndex+bufferSize
+    for _i in range(start, end):
+      i = _i%bufferSize;
+      sys.stdout.write("{};{};{};{};".format(buffer[i].timestamp, actors[buffer[i].actor], 
+        types[buffer[i].type], methods[buffer[i].method]))
+      if buffer[i].valueDefined == 1:
+        sys.stdout.write("{}".format(buffer[i].value))
+      print("")

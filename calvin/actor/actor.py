@@ -389,6 +389,7 @@ class Actor(object):
         self.methodId = []
         for method in self.__class__.action_priority:
           self.methodId.append(monitor.register_method(method.__name__))
+        self.monitor_value = None
 
     def set_authorization_checks(self, authorization_checks):
         self.authorization_checks = authorization_checks
@@ -568,7 +569,7 @@ class Actor(object):
         #
         # First make sure we are allowed to run
         #
-        monitor.store(0, self.monitorId, 0)
+        monitor.store(0, self.monitorId, 0, 0, 0)
         if not self._authorized():
             return False
 
@@ -586,7 +587,11 @@ class Actor(object):
                 # Action firing should fire the first action that can fire,
                 # hence when fired start from the beginning priority list
                 if did_fire:
-                    monitor.store(1, self.monitorId, self.methodId[ai])
+                    if self.monitor_value is not None:
+                      monitor.store(1, self.monitorId, self.methodId[ai], 1, self.monitor_value)
+                      self.monitor_value = None
+                    else:
+                      monitor.store(1, self.monitorId, self.methodId[ai], 0, 0)
                     # # FIXME: Add hooks for metering and probing
                     # self.metering.fired(self._id, action_method.__name__)
                     # self.control.log_actor_firing( ... )
@@ -611,7 +616,7 @@ class Actor(object):
                 self._handle_exhaustion(exhausted, output_ok)
                 done = True
 
-        monitor.store(2, self.monitorId, 0)
+        monitor.store(2, self.monitorId, 0, 0, 0)
         return actor_did_fire
 
 

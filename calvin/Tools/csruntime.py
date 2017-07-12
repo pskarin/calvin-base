@@ -110,6 +110,10 @@ Start runtime, compile calvinscript and deploy application.
                             help="Set the UUID of the runtime. Does not apply when security is enabled.",
                             dest='uuid')
 
+    argparser.add_argument('--probe-buffer-size', metavar='<size>', type=int,
+                           help='Number of entries into store in circular probe buffer',
+                           dest='probe_buffer_size', default=1)
+
     return argparser.parse_args()
 
 
@@ -373,6 +377,8 @@ def main():
     # Need to be before other calvin calls to set the common log file
     set_loglevel(args.loglevel, args.logfile)
     set_config_from_args(args)
+
+    monitor.allocate(args.probe_buffer_size)
 
     app_info = None
 
