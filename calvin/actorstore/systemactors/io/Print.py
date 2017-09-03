@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from calvin.actor.actor import Actor, manage, condition
+from calvin.actor.actor import Actor, manage, condition, calvinsys, stateguard
 
 class Print(Actor):
     """
@@ -33,22 +33,20 @@ class Print(Actor):
         self.setup()
 
     def setup(self):
-        self.use("calvinsys.io.stdout", shorthand="stdout")
-        self.stdout = self["stdout"]
-        self.stdout.enable()
-                
+        self.stdout = calvinsys.open(self, "io.stdout")
+
     def will_migrate(self):
-        self.stdout.disable()
+        calvinsys.close(self.stdout)
         
     def did_migrate(self):
         self.setup()
 
+    @stateguard(lambda self: calvinsys.can_write(self.stdout))
     @condition(action_input=['token'])
     def write(self, data):
-        self.stdout.writeln(str(data))
-        
+        calvinsys.write(self.stdout, data)
 
     action_priority = (write, )
     
-    requires = ['calvinsys.io.stdout']
+    requires = ['io.stdout']
     

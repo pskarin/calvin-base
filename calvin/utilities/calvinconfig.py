@@ -119,11 +119,47 @@ class CalvinConfig(object):
                     "sys.timer.repeating": {
                         "module": "sys.timer.Timer",
                         "attributes": {"repeats": True }
+                    },
+                    "sys.attribute.indexed": {
+                        "module": "sys.attribute.Attribute",
+                        "attributes": { "type": "indexed" }
+                    },
+                    "sys.attribute.public": {
+                        "module": "sys.attribute.Attribute",
+                        "attributes": { "type": "public" }
+                    },
+                    "io.stdout": {
+                        "module": "term.StandardOut",
+                        "attributes": {}
+                    },
+                    "log.info": {
+                        "module": "term.Log",
+                        "attributes": { "level": "info"}
+                    },
+                    "log.warning": {
+                        "module": "term.Log",
+                        "attributes": { "level": "warning"}
+                    },
+                    "log.error": {
+                        "module": "term.Log",
+                        "attributes": { "level": "error"}
                     }
                 }
              },
              'calvinlib': {
                  "capabilities": {
+                     "math.arithmetic.compare": {
+                         "module": "mathlib.Arithmetic"
+                     },
+                     "math.arithmetic.operator": {
+                         "module": "mathlib.Arithmetic"
+                     },
+                     "math.arithmetic.eval": {
+                         "module": "mathlib.Arithmetic"
+                     },
+                     "math.random": {
+                         "module": "mathlib.Random"
+                     },
                      "json": {
                          "module": "jsonlib.Json"
                      },

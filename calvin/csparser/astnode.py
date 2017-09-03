@@ -68,23 +68,9 @@ class Node(object):
             self.children.remove(child)
             child.parent = None
 
-    def next_sibling(self):
-        if not self.parent:
-            return None
-        i = self.parent.children.index(self)
-        try:
-            return self.parent.children[i + 1]
-        except:
-            return None
-
-    def prev_sibling(self):
-        if not self.parent:
-            return None
-        i = self.parent.children.index(self)
-        try:
-            return self.parent.children[i - 1]
-        except:
-            return None
+    def remove_children(self, children):
+        for child in children:
+            self.remove_child(child)
 
     def delete(self):
         if not self.parent:
@@ -186,59 +172,6 @@ class PortProperty(Node):
         self.direction = kwargs.get('direction')
         self.add_children(kwargs.get('args', {}))
 
-    def is_same_port(self, other):
-        return (self.actor == other.actor and self.port == other.port and
-            not (self.direction is not None and other.direction is not None and self.direction != other.direction))
-
-    def consolidate(self, other):
-        """
-        This method consolidates two port properties into one.
-        Handling duplicates and conflicts for the same port.
-        Assumes check that ports are identical is done!
-        """
-        my_properties = {p.ident.ident: p for p in self.children}
-        other_properties = {p.ident.ident: p for p in other.children}
-        consolidate = set(my_properties.keys()) & set(other_properties.keys())
-        #keep = set(my_properties.keys()) - set(other_properties.keys())
-        add = set(other_properties.keys()) - set(my_properties.keys())
-
-        for prop_name in consolidate:
-            # Properties can be tuples/list with alternatives in priority order
-            # Consolidate to a common subset in the order of our alternatives
-            if my_properties[prop_name].arg.value != other_properties[prop_name].arg.value:
-                if isinstance(my_properties[prop_name].arg.value, (tuple, list)):
-                    my_prop_list = my_properties[prop_name].arg.value
-                else:
-                    my_prop_list = [my_properties[prop_name].arg.value]
-                if isinstance(other_properties[prop_name].arg.value, (tuple, list)):
-                    other_prop_list = other_properties[prop_name].arg.value
-                else:
-                    other_prop_list = [other_properties[prop_name].arg.value]
-                common = set(my_prop_list) & set(other_prop_list)
-                if len(common) == 0:
-                    raise  calvinresponse.CalvinResponseException(
-                                calvinresponse.CalvinResponse(
-                                    status=calvinresponse.BAD_REQUEST,
-                                    data="Can't handle conflicting properties without common alternatives"))
-                # Ordered common
-                ordered_common = []
-                for p in my_prop_list:
-                    if p in common:
-                        ordered_common.append(p)
-                my_properties[prop_name].arg.value = ordered_common
-
-        for prop_name in add:
-            prop = other_properties[prop_name]
-            other.remove_child(prop)
-            self.add_child(prop)
-
-    def add_property(self, ident, arg):
-        my_properties = [p for p in self.children if p.ident.ident == ident]
-        if my_properties:
-            my_properties[0].arg.value = arg
-        else:
-            self.add_child(NamedArg(ident=Id(ident=ident), arg=Value(value=arg)))
-
     def __str__(self):
         if self._verbose_desc:
             return "{} {}.{} {} {}".format(self.__class__.__name__, str(self.actor), self.port, hex(id(self)),
@@ -297,42 +230,6 @@ class TransformedPort(Node):
         self.label = kwargs.get('label')
 
 
-# FIXME: Abstract
-class Port(Node):
-    """docstring for LinkNode"""
-    def __init__(self, **kwargs):
-        super(Port, self).__init__(**kwargs)
-        self.children = None
-        self.actor = kwargs.get('actor')
-        self.port = kwargs.get('port')
-        self.tag = kwargs.get('tag')
-
-    @property
-    def name(self):
-        return "{}.{}".format(self.actor, self.port)
-
-    def __str__(self):
-        if self._verbose_desc:
-            return "{} {}.{} {} {}".format(self.__class__.__name__, str(self.actor), self.port,
-                                                hex(id(self)), self.debug_info)
-        else:
-            return "{} {}.{}".format(self.__class__.__name__, str(self.actor), self.port)
-
-class PortList(Node):
-    """docstring for LinkNode"""
-    def __init__(self, **kwargs):
-        super(PortList, self).__init__(**kwargs)
-
-class InPort(Port):
-    """docstring for LinkNode"""
-    def __init__(self, **kwargs):
-        super(InPort, self).__init__(**kwargs)
-
-class OutPort(Port):
-    """docstring for LinkNode"""
-    def __init__(self, **kwargs):
-        super(OutPort, self).__init__(**kwargs)
-
 class ImplicitPort(Node):
     """docstring for ImplicitPortNode"""
     def __init__(self, **kwargs):
@@ -353,6 +250,44 @@ class ImplicitPort(Node):
     @property
     def label(self):
         return self.children[1]
+
+class PortList(Node):
+    """docstring for LinkNode"""
+    def __init__(self, **kwargs):
+        super(PortList, self).__init__(**kwargs)
+
+# FIXME: Abstract
+class Port(Node):
+    """
+    Port have properties: actor, port, tag
+    Port propeties are stored as children
+    """
+    def __init__(self, **kwargs):
+        super(Port, self).__init__(**kwargs)
+        self.actor = kwargs.get('actor')
+        self.port = kwargs.get('port')
+        self.tag = kwargs.get('tag')
+
+    @property
+    def name(self):
+        return "{}.{}".format(self.actor, self.port)
+
+    def __str__(self):
+        if self._verbose_desc:
+            return "{} {}.{} {} {}".format(self.__class__.__name__, str(self.actor), self.port,
+                                                hex(id(self)), self.debug_info)
+        else:
+            return "{} {}.{}".format(self.__class__.__name__, str(self.actor), self.port)
+
+class InPort(Port):
+    """docstring for LinkNode"""
+    def __init__(self, **kwargs):
+        super(InPort, self).__init__(**kwargs)
+
+class OutPort(Port):
+    """docstring for LinkNode"""
+    def __init__(self, **kwargs):
+        super(OutPort, self).__init__(**kwargs)
 
 class InternalPort(Port):
     """docstring for InternalPortNode"""

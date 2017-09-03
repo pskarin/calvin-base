@@ -1,10 +1,6 @@
-void     : flow.Void()
-city     : flow.Init(data="Ystad")
-weather  : web.OpenWeatherMap()
-forecast : io.Print()
-status   : io.Print()
+tick : std.Trigger(data=true, tick=0.5)
+weather  : web.TriggeredWeather(city="New York,US")
+out : io.Print()
 
-void.void        > city.in
-city.out         > weather.city
-weather.forecast > forecast.token
-weather.status   > status.token
+tick.data > weather.trigger
+weather.forecast > out.token

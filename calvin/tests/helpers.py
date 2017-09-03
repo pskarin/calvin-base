@@ -549,12 +549,12 @@ def security_verify_storage(rt, request_handler):
         rt_id[j] = retry(30, partial(request_handler.get_node_id, rt[j]), lambda _: True, "Failed to get node id")
     _log.info("RUNTIMES:{}".format(rt_id))
     # Wait for storage to be connected
-    index = "node/capabilities/calvinsys.native.python-json" 
+    index = "node/capabilities/json" 
     failed = True
     def test():
         count=[0]*len(rt)
         caps =[0]*len(rt)
-        #Loop through all runtimes to ask them which runtimes nodes they know with calvisys.native.python-json
+        #Loop through all runtimes to ask them which runtimes nodes they know with json-capabilities
         for j in range(len(rt)):
             caps[j] = retry(30, partial(request_handler.get_index, rt[j], index), lambda _: True, "Failed to get index")['result']
             #Add the known nodes to statistics of how many nodes store keys from that node
@@ -663,7 +663,7 @@ def _generate_certiticates(ca, runtimes, domain_name, credentials_testdir):
         csr = ca.decrypt_encrypted_csr(encrypted_enrollment_request=rsa_encrypted_csr)
         csr_path = ca.store_csr_with_enrollment_password(csr)
         cert_path = ca.sign_csr(csr_path)
-        runtime.store_own_cert(certpath=cert_path, security_dir=credentials_testdir)
+        runtime.store_own_cert(certpath=cert_path)
 
 
 def _runtime_attributes(domain_name, runtimes):

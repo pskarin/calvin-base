@@ -40,7 +40,6 @@ class Items(Actor):
     def init(self):
         self.data = []
         self.has_data = False
-        print("Setting up")
         self.setup()
 
     def setup(self):
@@ -48,12 +47,6 @@ class Items(Actor):
 
     def did_migrate(self):
         self.setup()
-        
-    def will_migrate(self):
-        calvinlib.dispose(self.copy)
-        
-    def will_end(self):
-        calvinlib.dispose(self.copy)
 
     @stateguard(lambda self: not self.has_data)
     @condition(['list'], [])

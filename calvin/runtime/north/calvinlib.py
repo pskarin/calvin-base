@@ -45,19 +45,17 @@ class CalvinLib(object):
     """
 
     def __init__(self):
-        self._node = None
         self.capabilities = {}
         self.objects = []
 
-    def init(self, node):
+    def init(self):
         """
         Get and setup capabilities from config
         """
-        self._node = node
         capabilities = _conf.get('calvinlib', 'capabilities') or {}
         blacklist = _conf.get(None, 'capabilities_blacklist') or []
         for capability in blacklist:
-            _ = capabilities.pop(capability, None)
+            capabilities.pop(capability, None)
         for key, value in capabilities.iteritems():
             module = value['module']
             value['path'] = module
@@ -84,9 +82,12 @@ class CalvinLib(object):
         if not pyclass:
             raise Exception("No entry %s in %s" % (name, capability['path']))
         obj = pyclass(calvinlib=self, name=name)
-        data = dict(capability['attributes'], **kwargs)
-        validate(data, obj.init_schema)
-        obj.init(**data)
+        if capability.get('attributes'):
+            data = dict(capability['attributes'], **kwargs)
+            validate(data, obj.init_schema)
+            obj.init(**data)
+        else :
+            obj.init()
         self.objects.append(obj)
         return obj
 
@@ -114,20 +115,14 @@ class CalvinLib(object):
             _log.debug("Object does not exist")
 
 class MockCalvinLib(CalvinLib):
-    def __init__(self):
-        self._caps = {}
 
-    def set(self, cap, obj):
-        self._caps[cap] = obj
-
-    def has_capability(self, req):
-        return req in self._caps
-
-    def list_capabilities(self):
-        return self._caps.keys()
-
-    def use(self, cap, **kwargs):
-        return self._caps[cap]
-
-    def remove(self, obj):
-        pass
+    def init(self, capabilities):
+        """
+        setup capabilities from config
+        """
+        for key, value in capabilities.iteritems():
+            module = value['module']
+            value['path'] = module
+            value['module'] = None
+            _log.info("Capability '%s' registered with module '%s'" % (key, module))
+        self.capabilities = capabilities

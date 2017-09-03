@@ -176,7 +176,41 @@ class PortlistRewrite(object):
         link.delete()
 
 
-class ImplicitPortRewrite(object):
+class PortRewrite(object):
+    """Baseclass for port rewrite operations"""
+    def __init__(self, issue_tracker):
+        super(PortRewrite, self).__init__()
+        self.issue_tracker = issue_tracker
+        self.counter = 0
+
+    def _make_unique(self, name):
+        self.counter += 1
+        return "_{}_{}".format(name, str(self.counter))
+
+
+    def _add_src_or_snk_and_relink(self, node, actor, port):
+        link = node.parent
+        link.replace_child(node, port)
+        block = link.parent
+        block.add_child(actor)
+
+    def _add_src_and_relink(self, node, actor, port):
+        self._add_src_or_snk_and_relink(node, actor, port)
+
+    def _add_snk_and_relink(self, node, actor, port):
+        self._add_src_or_snk_and_relink(node, actor, port)
+
+    def _add_filter_and_relink(self, node, actor, inport, outport):
+        link = node.parent
+        block = link.parent
+        block.add_child(actor)
+        new_link = ast.Link(outport=outport, inport=node.port)
+        block.add_child(new_link)
+        link.inport = inport
+
+
+
+class ImplicitOutPortRewrite(PortRewrite):
     """
     ImplicitPortRewrite takes care of the construct
         <value> > foo.in
@@ -184,11 +218,6 @@ class ImplicitPortRewrite(object):
 
     Running this cannot not fail and thus cannot cause an issue.
     """
-    def __init__(self, issue_tracker):
-        super(ImplicitPortRewrite, self).__init__()
-        self.counter = 0
-        self.issue_tracker = issue_tracker
-
     @visitor.on('node')
     def visit(self, node):
         pass
@@ -206,15 +235,27 @@ class ImplicitPortRewrite(object):
             const_name = node.label.ident
         else:
             # Create a unique name if not given by label
-            self.counter += 1
-            const_name = '_literal_const_'+str(self.counter)
+            const_name = self._make_unique('literal_const')
+
         const_actor = ast.Assignment(ident=const_name, actor_type='std.Constant', args=args)
         const_actor.debug_info = node.arg.debug_info
         const_actor_port = ast.OutPort(actor=const_name, port='token')
-        link = node.parent
-        link.replace_child(node, const_actor_port)
-        block = link.parent
-        block.add_child(const_actor)
+        self._add_src_and_relink(node, const_actor, const_actor_port)
+
+
+class ImplicitInPortRewrite(PortRewrite):
+    """
+    """
+
+    @visitor.on('node')
+    def visit(self, node):
+        pass
+
+    @visitor.when(ast.Node)
+    def visit(self, node):
+        if node.is_leaf():
+            return
+        map(self.visit, node.children[:])
 
     @visitor.when(ast.TransformedPort)
     def visit(self, node):
@@ -224,21 +265,28 @@ class ImplicitPortRewrite(object):
             transform_name = node.label.ident
         else:
             # Create a unique name if not given by label
-            self.counter += 1
-            transform_name = '_transform_'+str(self.counter)
+            transform_name = self._make_unique('transform')
         transform_actor = ast.Assignment(ident=transform_name, actor_type='std.Constantify', args=args)
         transform_actor.debug_info = node.value.debug_info
         transform_actor_outport = ast.OutPort(actor=transform_name, port='out')
         transform_actor_inport = ast.InPort(actor=transform_name, port='in')
 
-        link = node.parent
-        block = link.parent
+        self._add_filter_and_relink(node, transform_actor, transform_actor_inport, transform_actor_outport)
 
-        block.add_child(transform_actor)
 
-        new_link = ast.Link(outport=transform_actor_outport, inport=node.port)
-        block.add_child(new_link)
-        link.inport = transform_actor_inport
+class VoidPortRewrite(PortRewrite):
+    """
+    """
+
+    @visitor.on('node')
+    def visit(self, node):
+        pass
+
+    @visitor.when(ast.Node)
+    def visit(self, node):
+        if node.is_leaf():
+            return
+        map(self.visit, node.children[:])
 
     @visitor.when(ast.Void)
     def visit(self, node):
@@ -252,14 +300,12 @@ class ImplicitPortRewrite(object):
             actor_type='flow.Terminator'
             port_class = ast.InPort
 
-        self.counter += 1
-        actor_name = '_void_'+str(self.counter)
+        actor_name = self._make_unique('void')
         void_actor = ast.Assignment(ident=actor_name, actor_type=actor_type)
+        void_actor.debug_info = node.debug_info
         void_actor_port = port_class(actor=actor_name, port='void')
-        link = node.parent
-        link.replace_child(node, void_actor_port)
-        block = link.parent
-        block.add_child(void_actor)
+
+        self._add_src_or_snk_and_relink(node, void_actor, void_actor_port)
 
 
 class RestoreParents(object):
@@ -280,6 +326,90 @@ class RestoreParents(object):
         self.stack.append(node)
         map(self.visit, node.children[:])
         self.stack.pop()
+
+class CollectPortProperties(object):
+    """
+    Collect actor-declared port properties and PortProperty statements and make the port properties
+    children of their respective ports.
+    The rationale for this is that we don't need to handle namespace propagation etc. for the port properties
+    since they will piggy-back on the port that the properties relate to.
+    N.B. A consequence of this is that until the port properties have been coalesced (extracted
+    from the port) after the tree is flattened the (name, port, direction) combo is not updated.
+    """
+    def __init__(self, issue_tracker):
+        super(CollectPortProperties, self).__init__()
+        self.issue_tracker = issue_tracker
+
+    @visitor.on('node')
+    def visit(self, node):
+        pass
+
+    @visitor.when(ast.Node)
+    def visit(self, node):
+        if node.is_leaf():
+            return
+        map(self.visit, node.children[:])
+
+    @visitor.when(ast.PortProperty)
+    def visit(self, node):
+        # Collect explicit PortProperty statements and make them children of their respective ports
+        block = node.parent
+        ports = []
+        if node.actor is None:
+            # This works because any ambiguity in port names have been detected in check_consistency in a previous step
+            if not node.direction or node.direction == "in":
+                ports += query(block, kind=ast.InternalInPort, maxdepth=2, attributes={'port':node.port})
+            if not node.direction or node.direction == "out":
+                ports += query(block, kind=ast.InternalOutPort, maxdepth=2, attributes={'port':node.port})
+        else:
+            # This works because any ambiguity in port names have been detected in check_consistency in a previous step
+            if not node.direction or node.direction == "in":
+                ports += query(block, kind=ast.InPort, maxdepth=2, attributes={'actor':node.actor, 'port':node.port})
+            if not node.direction or node.direction == "out":
+                ports += query(block, kind=ast.OutPort, maxdepth=2, attributes={'actor':node.actor, 'port':node.port})
+        self._transfer_property(node, ports)
+
+    def _transfer_property(self, node, portlist):
+            # If len(portlist) == 0 then there is no port with such a name => error should have been reported earlier
+            # Since there is no port to attach the property to, drop the node and continue
+            if not portlist:
+                node.delete() # remove from tree
+                return
+            # If len(portlist) > 1 then there are multiple ports connected which is OK as long there is not a mix of inports and outports
+            # which should have been detected earlier => error should have been reported earlier.
+            # Since it is enough to attach the the property to one port instance, grab the first port instance.
+            port = portlist[0]
+            node.delete() # remove from tree
+            port.add_child(node)
+
+    @visitor.when(ast.Assignment)
+    def visit(self, node):
+        if not node.metadata['is_known']:
+            return
+        # Collect actor-declared port properties and make them children of their respective ports
+        name = node.ident
+        for port, pp in  node.metadata['input_properties'].items():
+            query_res = query(node.parent, kind=ast.InPort, maxdepth=2, attributes={'actor':name, 'port':port})
+            self._transfer_actor_properties(node, name, port, query_res, pp)
+        for port, pp in  node.metadata['output_properties'].items():
+            query_res = query(node.parent, kind=ast.OutPort, maxdepth=2, attributes={'actor':name, 'port':port})
+            self._transfer_actor_properties(node, name, port, query_res, pp)
+
+    def _transfer_actor_properties(self, node, actor, port, portlist, properties):
+        if not portlist:
+            # The portlist is empty => there is a bug in the script
+            # Silently let this pass to be handled during consistency check
+            return
+        destination_port = portlist[0]
+        direction = 'in' if type(destination_port) is ast.InPort else 'out'
+        # Create a new port property object and stuff the actor properties into it
+        # FIXME: Actor argument shouldn't matter, since it will be taken from the port after flattening the tree,
+        #        but it setting it a generic string causes errors. Need to find out why.
+        port_property = ast.PortProperty(actor=actor, port=port, direction=direction, debug_info=node.debug_info)
+        for ident, value in properties.items():
+            prop = ast.NamedArg(ident=ast.Id(ident=ident), arg=ast.Value(value=value))
+            port_property.add_child(prop)
+        destination_port.add_child(port_property)
 
 
 class Expander(object):
@@ -312,19 +442,6 @@ class Expander(object):
         if not node.metadata:
             node.metadata = _lookup(node, self.issue_tracker)
         if node.metadata['is_known'] and node.metadata['type'] == 'actor':
-            # Transfer actor declared port properties here so that they can be consolidated and validated
-            for port, pp in  node.metadata['input_properties'].items():
-                name = node.ident
-                port_property = ast.PortProperty(actor=name, port=port, direction="in", debug_info=node.debug_info)
-                for ident, value in pp.items():
-                    port_property.add_property(ident, value)
-                node.parent.add_child(port_property)
-            for port, pp in  node.metadata['output_properties'].items():
-                name = node.ident
-                port_property = ast.PortProperty(actor=name, port=port, direction="out", debug_info=node.debug_info)
-                for ident, value in pp.items():
-                    port_property.add_property(ident, value)
-                node.parent.add_child(port_property)
             # Nothing more to do
             return
         if not node.metadata['is_known']:
@@ -360,6 +477,8 @@ class Flatten(object):
     """
     Flattens a block by wrapping everything in the block's namespace
     and propagating arguments before removing the block
+    N.B. This visits blocks depth-first and must start in a block node
+         or a node whose only child is a block.
     """
     def __init__(self, issue_tracker):
         self.stack = []
@@ -394,15 +513,14 @@ class Flatten(object):
 
     @visitor.when(ast.Port)
     def visit(self, node):
+        # Only promote once. List self.seen is reset when expanding a block
+        if node in self.seen:
+            return
+        self.seen.append(node)
         if node.actor:
             node.actor = self.stack[-1] + ':' + node.actor
         else:
             node.actor = self.stack[-1]
-
-    @visitor.when(ast.PortProperty)
-    def visit(self, node):
-        if node.actor is not None:
-            node.actor = self.stack[-1] + ':' + node.actor
 
     @visitor.when(ast.Block)
     def visit(self, node):
@@ -411,92 +529,105 @@ class Flatten(object):
         blocks = [x for x in node.children if type(x) is ast.Block]
         map(self.visit, blocks)
 
+        # Replace and delete links (manipulates children)
 
-        consumed = set()
+        def _relink(l1, l2):
+            # 4. Retrieve the links involved
+            l0_l1_link = l1.parent
+            l0 = l0_l1_link.outport
+            l2_l3_link = l2.parent
+            l3 = l2_l3_link.inport
+            # 5. Create the new link
+            l0_l3_link = ast.Link(outport=l0, inport=l3)
+            # 6. Mark it for addition
+            produced.append(l0_l3_link)
+            # 7. Mark the old links for removal
+            consumed.append(l0_l1_link)
+            consumed.append(l2_l3_link)
+            # 8. Transfer port properties
+            l0.add_children(l2.children)
+            l3.add_children(l1.children)
+
+        # Block expansion of link and properties over component inports
+        # =============================================================
+        #
+        # We have the following situation: an actor outport is connected to an inport on a component "hull",
+        # that is subsequently connected to an actor inport inside the component. There are four ports involved,
+        # connecting port on the component hull counting as two (outside and inside). Each of the ports may have
+        # port properties set on them, and the properties set on the ports on the hull need to be transferred to
+        # the other ports since the hull is about to go away.
+        #
+        # The way to identify the connection to be made is by finding ast.InternalOutPort objects with the same
+        # identifier (actor name + port name) as an ast.Inport object (L1 and L2 below).
+        #
+        # In order to preserve port propterties P1 and P2 from L1 and L2, respectively, they should be transferred
+        # according to the scheme below.
+        #
+        #                                                 +---------------------------------+
+        #                    L0      L1                   |                                 |
+        # (ast.OutPort [P0]) x.out > comp.in (ast.InPort [P1])                              v
+        #               ^            comp.in (ast.InternalOutPort [P2]) > y.in (ast.InPort [P3])
+        #               |            L2                            |      L3
+        #               +------------------------------------------+
+        #
+        # =>
+        #
+        # (ast.OutPort [P0, P2]) x.out > y.in (ast.InPort [P1, P3])
+        #
+        # (L0 [P0], L1 [P1]) + (L2 [P2], L3 [P3]) => (L0 [P0, P2], L3 [P1, P3])
+        #
+
+        # 1. Accounting
+        consumed = []
         produced = []
+        # 2. Locate InternalOutPort objects (L2)
+        l2_list = query(node, kind=ast.InternalOutPort, maxdepth=2)
+        # 3. Find counterparts (L1) for each L2
+        for l2 in l2_list:
+            l1_list = query(node, kind=ast.InPort, attributes={'actor':l2.actor, 'port':l2.port})
+            for l1 in l1_list:
+                _relink(l1, l2)
 
-        def _clone_target(target, port):
-            # N.B. is_inport is true if port is subclass of ast.OutPort
-            #      since internal ports have opposite interpretation on the inside vs. outside
-            is_inport = isinstance(port, ast.OutPort)
-            clone = target.clone()
-            linked_port = port.parent.inport if is_inport else port.parent.outport
-            clone.actor = linked_port.actor
-            clone.port = linked_port.port
-            # Set direction since the port name might be ambiguous
-            clone.direction = "in" if is_inport else "out"
-            produced.append(clone)
-            consumed.add(target)
-
-        def _clone_targets(targets, port):
-            for target in targets:
-                _clone_target(target, port)
-
-        def _retarget_port_properties(ports):
-            for p in ports:
-                targets = query(node, kind=ast.PortProperty, attributes={'actor':p.actor, 'port':p.port})
-                _clone_targets(targets, p)
-
-        def _retarget_internal_port_properties(ports):
-            for p in ports:
-                targets = query(node, kind=ast.PortProperty, attributes={'actor':None, 'port':p.port})
-                is_inport = isinstance(p, ast.InPort)
-                query_kind = ast.OutPort if is_inport else ast.InPort
-                qports = query(node, kind=query_kind, attributes={'actor':p.actor, 'port':p.port})
-                for qport in qports:
-                    _clone_targets(targets, qport)
-
-        iips = query(node, kind=ast.InternalInPort, maxdepth=2)
-        iops = query(node, kind=ast.InternalOutPort, maxdepth=2)
-        _retarget_port_properties(iips + iops)
-        _retarget_internal_port_properties(iips + iops)
-
-        for prop in consumed:
-            prop.delete()
-
+        # 9. Modify the tree
+        node.remove_children(consumed)
         node.add_children(produced)
 
+        # Block expansion of link and properties over component outports
+        # ==============================================================
         #
-        # Relink
+        # This follows the same pattern as above, but the situation now looks like follows
         #
+        #                                                          +-----------------+
+        #                    L0      L1                            |                 |
+        # (ast.OutPort [P0]) x.out > comp.out (ast.InternalInPort [P1])              v
+        #               ^            comp.out (ast.OutPort [P2]) > y.in (ast.InPort [P3])
+        #               |            L2                     |      L3
+        #               +-----------------------------------+
+        #
+        # =>
+        #
+        # (ast.OutPort [P0, P2]) x.out > y.in (ast.InPort [P1, P3])
+        #
+        # (L0 [P0], L1 [P1]) + (L2 [P2], L3 [P3]) => (L0 [P0, P2], L3 [P1, P3])
 
-        # Replace and delete links (manipulates children)
-        iops = query(node, kind=ast.InternalOutPort, maxdepth=2)
-        consumed = set()
-        for iop in iops:
-            targets = query(node, kind=ast.InPort, attributes={'actor':iop.actor, 'port':iop.port})
-            if not targets:
-                continue
-            for target in targets:
-                link = target.parent.clone()
-                link.inport = iop.parent.inport.clone()
-                node.add_child(link)
-                # Defer deletion of link since can have multiple matches
-                consumed.add(target.parent)
-            iop.parent.delete()
+        # 1. Accounting
+        consumed = []
+        produced = []
+        # 2. Locate InternalInPorts objects (L1)
+        l1_list = query(node, kind=ast.InternalInPort, maxdepth=2)
+        # 3. Find counterparts (L2) for each L1
+        for l1 in l1_list:
+            l2_list = query(node, kind=ast.OutPort, attributes={'actor':l1.actor, 'port':l1.port})
+            for l2 in l2_list:
+                _relink(l1, l2)
 
-        for link in consumed:
-            link.delete()
-
-        iips = query(node, kind=ast.InternalInPort, maxdepth=2)
-        consumed = set()
-        for iip in iips:
-            targets = query(node, kind=ast.OutPort, attributes={'actor':iip.actor, 'port':iip.port})
-            if not targets:
-                continue
-            for target in targets:
-                link = target.parent.clone()
-                link.outport = iip.parent.outport.clone()
-                node.add_child(link)
-                # Defer deletion of link since can have multiple matches
-                consumed.add(target.parent)
-            iip.parent.delete()
-
-        for link in consumed:
-            link.delete()
+        # 9. Modify the tree
+        node.remove_children(consumed)
+        node.add_children(produced)
 
         # Promote ports and assignments (handled by visitors)
         non_blocks = [x for x in node.children if type(x) is not ast.Block]
+        self.seen = []
         map(self.visit, non_blocks)
 
         # Raise promoted children to outer level
@@ -507,21 +638,23 @@ class Flatten(object):
         self.stack.pop()
 
 
-class ConsolidatePortProperty(object):
+class CoalesceProperties(object):
     """
-    Consolidates port properties by removing duplicates and
-    moving properties to one per port, and handle conflicting
-    property settings. Also add the nbr_peers property for all
-    ports with the number of connecting peers.
+    Add the nbr_peers property for all ports, generating a number of
     """
     def __init__(self, issue_tracker):
-        super(ConsolidatePortProperty, self).__init__()
+        super(CoalesceProperties, self).__init__()
         self.issue_tracker = issue_tracker
-        self.inports = {}
-        self.outports = {}
 
     def process(self, root):
+        self.counter = {}
+        self.port_properties = {}
         self.visit(root)
+        props = []
+        for key, pp in self.port_properties.iteritems():
+            pp.add_child(ast.NamedArg(ident=ast.Id(ident="nbr_peers"), arg=ast.Value(value=self.counter[key])))
+            props.append(pp)
+        root.add_children(props)
 
     @visitor.on('node')
     def visit(self, node):
@@ -529,149 +662,188 @@ class ConsolidatePortProperty(object):
 
     @visitor.when(ast.Node)
     def visit(self, node):
-        targets = query(node, kind=ast.PortProperty)
-        keep = []
-        remove = []
-        for target in targets:
-            if any([p.is_same_port(target) for p in keep]):
-                remove.append(target)
-                continue
-            # Not consolidated yet
-            keep.append(target)
-            same_port = [t for t in targets if t.is_same_port(target)]
-            for same in same_port:
-                try:
-                    target.consolidate(same)
-                except calvinresponse.CalvinResponseException as e:
-                    if e.status == calvinresponse.BAD_REQUEST:
-                        self.issue_tracker.add_error(e.data, target)
-                        self.issue_tracker.add_error(e.data, same)
-        for p in remove:
-            node.remove_child(p)
-
-        # Count links
-        links = [x for x in node.children if type(x) is ast.Link]
-        map(self.visit, links)
-        # Add empty port properties for any ports missing it
-        inports = [(x.actor, x.port) for x in node.children if type(x) is ast.PortProperty
-                        and (x.direction is None or x.direction == "in")]
-        outports = [(x.actor, x.port) for x in node.children if type(x) is ast.PortProperty
-                        and (x.direction is None or x.direction == "out")]
-        for port, nbr in self.inports.items():
-            if port not in inports:
-                node.add_child(ast.PortProperty(actor=port[0], port=port[1], direction="in"))
-        for port, nbr in self.outports.items():
-            if port not in outports:
-                node.add_child(ast.PortProperty(actor=port[0], port=port[1], direction="out"))
-        # Visit all port properties
-        portproperties = [x for x in node.children if type(x) is ast.PortProperty]
-        map(self.visit, portproperties)
+        if not node.is_leaf():
+            map(self.visit, node.children[:])
 
     @visitor.when(ast.Link)
     def visit(self, link):
-        # Count incomming and outgoing links between ports
-        name = (link.inport.actor, link.inport.port)
-        self.inports[name] = self.inports.get(name, 0) + 1
-        name = (link.outport.actor, link.outport.port)
-        self.outports[name] = self.outports.get(name, 0) + 1
+        # Create port properties and compute number of connections for each port
+        name = (link.inport.actor, link.inport.port, "in")
+        self.port_properties.setdefault(name, ast.PortProperty(actor=link.inport.actor, port=link.inport.port, direction="in"))
+        self.counter[name] = self.counter.get(name, 0) + 1
+
+        name = (link.outport.actor, link.outport.port, "out")
+        self.port_properties.setdefault(name, ast.PortProperty(actor=link.outport.actor, port=link.outport.port, direction="out"))
+        self.counter[name] = self.counter.get(name, 0) + 1
+
+        map(self.visit, link.children[:])
+
+    @visitor.when(ast.InPort)
+    def visit(self, node):
+        self._coalsesce_properties_for_port(node, "in")
+
+    @visitor.when(ast.OutPort)
+    def visit(self, node):
+        self._coalsesce_properties_for_port(node, "out")
+
+    def _coalsesce_properties_for_port(self, node, direction):
+        if not node.children:
+            return
+        name = (node.actor, node.port, direction)
+        pp = self.port_properties[name]
+        for npp in node.children[:]:
+            pp.add_children(npp.children)
+            node.remove_child(npp)
+
+
+class MergePortProperties(object):
+    """
+    Merge port properties that have been set in various places
+
+    FIXME: Order is important, IMHO an _intrinsic_ property, i.e. defined by actor
+           should have preceedence over externally set properties, and likewise
+           a property defined inside a component should have preceedence over
+           externally set properties.
+    FIXME: Assuming for now that order of PortProperty's children complies with the above
+    """
+    def __init__(self, issue_tracker):
+        super(MergePortProperties, self).__init__()
+        self.issue_tracker = issue_tracker
+
+    @visitor.on('node')
+    def visit(self, node):
+        pass
+
+    @visitor.when(ast.Node)
+    def visit(self, node):
+        if not node.is_leaf():
+            map(self.visit, node.children[:])
 
     @visitor.when(ast.PortProperty)
     def visit(self, node):
-        # Apply nbr_peers property and set direction if that is missing and no ambiguity
-        name = (node.actor, node.port)
-        if node.direction is None and name in self.inports.keys():
-            node.add_property(ident="nbr_peers", arg=self.inports[name])
-            if name not in self.outports.keys():
-                node.direction = "in"
-            else:
-                reason = "Port property need direction since ambigious names"
-                self.issue_tracker.add_error(reason, node)
-                node.direction = "ambigious"
-        elif node.direction is None and name in self.outports.keys():
-            node.add_property(ident="nbr_peers", arg=self.outports[name])
-            node.direction = "out"
-        elif node.direction == "in" and name in self.inports.keys():
-            node.add_property(ident="nbr_peers", arg=self.inports[name])
-        elif node.direction == "out" and name in self.outports.keys():
-            node.add_property(ident="nbr_peers", arg=self.outports[name])
+        props = {}
+        for p in node.children[:]:
+            props.setdefault(p.ident.ident, []).append(p)
+        for p, mergelist in props.iteritems():
+            if len(mergelist) < 2:
+                # Uncontested
+                continue
+            # Detach properties from node
+            node.remove_children(mergelist)
+            # Merge list of properties targeting the same port
+            merged = self.merge_properties(mergelist)
+            # Add the resulting, single, merged property to node
+            node.add_child(merged)
 
-        # Validate port properties
-        port_properties = {p.ident.ident: p.arg.value for p in node.children}
-        for key, values in port_properties.items():
-            if not isinstance(values, (list, tuple)):
-                values = [values]
-            for value in values:
-                if key not in port_property_data.keys():
-                    reason = "Port property {} is unknown".format(key)
+    def merge_properties(self, mergelist):
+
+        def _merge_two(left, right):
+            lval = left.arg.value
+            rval = right.arg.value
+            if lval == rval:
+                # Identical properties
+                return left
+            lval_is_scalar = not isinstance(lval, (tuple, list))
+            rval_is_scalar = not isinstance(rval, (tuple, list))
+            if lval_is_scalar and rval_is_scalar:
+                # Both are non-iterables => left is prioritized (see class docs)
+                return left
+            # Make sure lval and rval are both lists
+            if lval_is_scalar:
+                lval = [lval]
+            if rval_is_scalar:
+                rval = [rval]
+            # Make ordered subset, possibly empty
+            merged_val = [item for item in lval if item in rval]
+            if not merged_val:
+                # Generate errors for each port property targeting this port
+                reason = "Can't handle conflicting properties without common alternatives"
+                for node in mergelist:
                     self.issue_tracker.add_error(reason, node)
-                    continue
-                ppdata = port_property_data[key]
-                if ppdata['type'] == "category":
-                    if value not in ppdata['values']:
-                        reason = "Port property {} can only have values {}".format(
-                            key, ", ".join(ppdata['values'].keys()))
-                        self.issue_tracker.add_error(reason, node)
-                        continue
-                    if node.direction not in ppdata['values'][value]['direction']:
-                        reason = "Port property {}={} is only for {} ports".format(
-                            key, value, ppdata['values'][value]['direction'])
-                        self.issue_tracker.add_error(reason, node)
-                        continue
-                if ppdata['type'] == 'scalar':
-                    if not isinstance(value, numbers.Number):
-                        reason = "Port property {} can only have scalar values".format(key)
-                        self.issue_tracker.add_error(reason, node)
-                        continue
-                if ppdata['type'] == 'string':
-                    if not isinstance(value, basestring):
-                        reason = "Port property {} can only have string values".format(key)
-                        self.issue_tracker.add_error(reason, node)
-                        continue
-                if key == 'nbr_peers' and value > 1 and node.direction == 'in':
-                    # Verify that inports with multiple connections have a routing property for multipeers
-                    ports = query(node.parent, kind=ast.InPort, attributes={'actor': node.actor, 'port': node.port})
-                    if not ports:
-                        ports = [node]
-                    try:
-                        routings = port_properties['routing']
-                        if not isinstance(routings, (list, tuple)):
-                            routings = [routings]
-                        removed = []
-                        for routing in routings[:]:
-                            if not port_property_data['routing']['values'][routing].get('multipeer', False):
-                                routings.remove(routing)
-                                removed.append(routing)
-                        if routings:
-                            # Possible routings available
-                            if removed:
-                                # ... but some options are removed
-                                for p in node.children:
-                                    if p.ident.ident == "routing":
-                                        for routing_value in removed:
-                                            p.arg.value.remove(routing_value)
-                        else:
-                            # No routing for multiple peers
-                            self._issue_on_ports(ports)
-                            continue
-                    except KeyError:
-                        self._issue_on_ports(ports)
-                        continue
+            left.arg.value = merged_val
+            return left
 
-    def _issue_on_ports(self, ports):
-        for port in ports:
-            try:
-                actor_name = port.actor.split(':',1)[1]
-            except:
-                actor_name = port.actor
-            port_name = "'{}.{}'".format(actor_name, port.port)
-            try:
-                actor_name = port.parent.outport.actor.split(':',1)[1]
-                peer_name = "('{}.{}')".format(actor_name, port.parent.outport.port)
-            except:
-                peer_name = ""
-            reason = "Input port {} with multiple connections {} must have a routing port property.".format(
-                        port_name, peer_name)
-            self.issue_tracker.add_error(reason, port)
+        prioritized = mergelist[0]
+        for merger in mergelist[1:]:
+            prioritized = _merge_two(prioritized, merger)
+        return prioritized
+
+class CheckPortProperties(object):
+    """
+    Merge port properties that have been set in various places
+
+    FIXME: Order is important, IMHO an _intrinsic_ property, i.e. defined by actor
+           should have preceedence over externally set properties, and likewise
+           a property defined inside a component should have preceedence over
+           externally set properties.
+    FIXME: Assuming for now that order of PortProperty's children complies with the above
+    """
+    def __init__(self, issue_tracker):
+        super(CheckPortProperties, self).__init__()
+        self.issue_tracker = issue_tracker
+
+    @visitor.on('node')
+    def visit(self, node):
+        pass
+
+    @visitor.when(ast.Node)
+    def visit(self, node):
+        if not node.is_leaf():
+            map(self.visit, node.children[:])
+
+    @visitor.when(ast.PortProperty)
+    def visit(self, node):
+        for p in node.children[:]:
+            self.check_property(p)
+
+    def check_property(self, prop):
+        p_name = prop.ident.ident
+        p_value = prop.arg.value if isinstance(prop.arg.value, (list, tuple)) else [prop.arg.value]
+        # print p_name, p_value
+        # Check that the property type is allowed
+        if p_name not in port_property_data:
+            reason = "Port property {} is unknown".format(p_name)
+            self.issue_tracker.add_error(reason, prop)
+            return
+        ppdata = port_property_data[p_name]
+        for value in p_value:
+            if ppdata['type'] == "category":
+                if value not in ppdata['values']:
+                    reason = "Port property {} can only have values {}".format(p_name, ", ".join(ppdata['values'].keys()))
+                    self.issue_tracker.add_error(reason, prop)
+                    continue
+                if prop.parent.direction not in ppdata['values'][value]['direction']:
+                    reason = "Port property {}={} is only for {} ports".format(p_name, value, ppdata['values'][value]['direction'])
+                    self.issue_tracker.add_error(reason, prop)
+                    continue
+            if ppdata['type'] == 'scalar':
+                if not isinstance(value, numbers.Number):
+                    reason = "Port property {} can only have scalar values".format(p_name)
+                    self.issue_tracker.add_error(reason, prop)
+                    continue
+            if ppdata['type'] == 'string':
+                if not isinstance(value, basestring):
+                    reason = "Port property {} can only have string values".format(p_name)
+                    self.issue_tracker.add_error(reason, prop)
+                    continue
+
+            if p_name == 'nbr_peers' and value > 1 and prop.parent.direction == 'in':
+                # Verify that inports with multiple connections have a routing property for multipeers
+                res = query(prop.parent, kind=ast.Id, attributes={'ident': 'routing'})
+                if not res:
+                    reason = "Input port {}.{} with multiple connections must have a routing port property.".format(prop.parent.actor, prop.parent.port)
+                    self.issue_tracker.add_error(reason, prop)
+                    continue
+                routings = res[0].parent.arg.value
+                if not isinstance(routings, (list, tuple)):
+                    routings = [routings]
+                valid_routings = [routing for routing in routings if port_property_data['routing']['values'][routing].get('multipeer', False)]
+                # FIXME: Issue warning if valid len(valid_routings) < len(routings)
+                routings = valid_routings[0] if len(valid_routings) == 1 else valid_routings
+                if not valid_routings:
+                    reason = "Input port {}.{} with multiple connections must have a routing port property.".format(prop.parent.actor, prop.parent.port)
+                    self.issue_tracker.add_error(reason, prop)
+                    continue
 
 
 class AppInfo(object):
@@ -840,6 +1012,9 @@ class ConsistencyCheck(object):
         map(self.visit, assignments)
         links = [n for n in node.children if type(n) is ast.Link]
         map(self.visit, links)
+        port_props = [n for n in node.children if type(n) is ast.PortProperty]
+        map(self.visit, port_props)
+
 
     @visitor.when(ast.Assignment)
     def visit(self, node):
@@ -919,6 +1094,32 @@ class ConsistencyCheck(object):
         else:
             map(self.visit, node.children)
 
+    @visitor.when(ast.PortProperty)
+    def visit(self, node):
+        block = node.parent
+        # FIXME: If direction present but redundant, make sure it is correct wrt port
+        if node.actor is None:
+            iip = query(block, kind=ast.InternalInPort, maxdepth=2, attributes={'port':node.port})
+            iop = query(block, kind=ast.InternalOutPort, maxdepth=2, attributes={'port':node.port})
+            n_iip, n_iop = len(iip), len(iop)
+            if n_iip == 0 and n_iop == 0:
+                self.issue_tracker.add_error('No such port.', node)
+            elif n_iip == 1 and n_iop == 1:
+                if node.direction not in ["in", "out"]:
+                    reason = "Port property need direction since ambigious names"
+                    self.issue_tracker.add_error(reason, node)
+        else:
+            ip = query(block, kind=ast.InPort, maxdepth=2, attributes={'actor':node.actor, 'port':node.port})
+            op = query(block, kind=ast.OutPort, maxdepth=2, attributes={'actor':node.actor, 'port':node.port})
+            n_ip, n_op = len(ip), len(op)
+            if n_ip == 0 and n_op == 0:
+                self.issue_tracker.add_error('No such port.', node)
+            elif n_ip == 1 and n_op == 1:
+                if node.direction not in ["in", "out"]:
+                    reason = "Port property need direction since ambigious names"
+                    self.issue_tracker.add_error(reason, node)
+
+
 
 class CodeGen(object):
 
@@ -959,24 +1160,37 @@ class CodeGen(object):
     def expand_portlists(self, issue_tracker):
         rw = PortlistRewrite(issue_tracker)
         rw.visit(self.root)
-        self.dump_tree('Portlist Expanded')
+        # self.dump_tree('Portlist Expanded')
 
-
-    def substitute_implicit_ports(self, issue_tracker):
-        # Implicit port rewrite
-        rw = ImplicitPortRewrite(issue_tracker)
+    def substitute_implicit_outports(self, issue_tracker):
+        rw = ImplicitOutPortRewrite(issue_tracker)
         rw.visit(self.root)
-        self.dump_tree('Port Rewrite')
+        # self.dump_tree('OutPort Rewrite')
+
+    def substitute_implicit_inports(self, issue_tracker):
+        rw = ImplicitInPortRewrite(issue_tracker)
+        rw.visit(self.root)
+        # self.dump_tree('InPort Rewrite')
+
+    def substitute_voidports(self, issue_tracker):
+        rw = VoidPortRewrite(issue_tracker)
+        rw.visit(self.root)
+        # self.dump_tree('VoidPort Rewrite')
 
     def resolve_constants(self, issue_tracker):
         rc = ReplaceConstants(issue_tracker)
         rc.process(self.root)
-        self.dump_tree('RESOLVED CONSTANTS')
+        # self.dump_tree('RESOLVED CONSTANTS')
 
     def consistency_check(self, issue_tracker):
         cc = ConsistencyCheck(issue_tracker)
         cc.process(self.root)
         self.dump_tree('Consistency Check')
+
+    def collect_port_properties(self, issue_tracker):
+        cpp = CollectPortProperties(issue_tracker)
+        cpp.visit(self.root)
+        self.dump_tree('Collected port properties')
 
     def expand_components(self, issue_tracker, verify):
         expander = Expander(issue_tracker)
@@ -988,25 +1202,51 @@ class CodeGen(object):
         flattener.process(self.root)
         self.dump_tree('FLATTENED')
 
-    def consolidate(self, issue_tracker):
-        consolidate = ConsolidatePortProperty(issue_tracker)
+    def coalesce_properties(self, issue_tracker):
+        consolidate = CoalesceProperties(issue_tracker)
         consolidate.process(self.root)
-        self.dump_tree('CONSOLIDATED')
+        self.dump_tree('Coalesced')
+
+    def merge_properties(self, issue_tracker):
+        mp = MergePortProperties(issue_tracker)
+        mp.visit(self.root)
+        self.dump_tree('Merged properties')
+
+    def check_properties(self, issue_tracker):
+        cp = CheckPortProperties(issue_tracker)
+        cp.visit(self.root)
+        self.dump_tree('Checked properties')
 
     def generate_code_from_ast(self, issue_tracker):
         gen_app_info = AppInfo(self.app_info, self.root, issue_tracker)
         gen_app_info.process()
 
     def phase1(self, issue_tracker):
+        # Change all ImplicitPort objects into std.Constant actors and relink
+        self.substitute_implicit_outports(issue_tracker)
+        # Break up list of inports into individual Link objects
         self.expand_portlists(issue_tracker)
-        self.substitute_implicit_ports(issue_tracker)
+        # Change all TransformedPort objects into std.Constantify actors and relink
+        self.substitute_implicit_inports(issue_tracker)
+        # Change all VoidPort objects into flow.Void/flow.Terminate actors and link
+        self.substitute_voidports(issue_tracker)
+        # Replace all constant objects with their values
         self.resolve_constants(issue_tracker)
+        # Check graph consistency (e.g. missing connections etc.)
         self.consistency_check(issue_tracker)
 
     def phase2(self, issue_tracker, verify):
+        # Replace Component objects with a clone of the component graph
         self.expand_components(issue_tracker, verify)
+        # Move port properties from actors and PortProperty statements into ports
+        self.collect_port_properties(issue_tracker)
+        # Replace hierachy with namespace for all objects
         self.flatten(issue_tracker)
-        self.consolidate(issue_tracker)
+        # Retrieve the port properties from the ports (now with correctly namespaced actor names)
+        self.coalesce_properties(issue_tracker)
+        # Merge possibly conflicting port properties, remove redundant properties
+        self.merge_properties(issue_tracker)
+        self.check_properties(issue_tracker)
 
     def generate_code(self, issue_tracker, verify):
         self.phase1(issue_tracker)

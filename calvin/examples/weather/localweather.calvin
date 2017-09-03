@@ -1,0 +1,6 @@
+tick : std.Trigger(data=true, tick=0.5)
+weather  : web.LocalWeather()
+out : io.Print()
+
+tick.data > weather.trigger
+weather.forecast > out.token

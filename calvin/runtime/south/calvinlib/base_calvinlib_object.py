@@ -34,9 +34,3 @@ class BaseCalvinlibObject(object):
         """
         raise NotImplementedError()
 
-    def dispose(self):
-        """
-        Close object
-        """
-        # Usually nothing to do here
-        pass

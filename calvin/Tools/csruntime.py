@@ -141,7 +141,7 @@ def storage_runtime(uri, control_uri, attributes=None, dispatch=False):
 def compile_script(scriptfile, credentials):
     _log.debug("Compiling %s ..." % scriptfile)
     from calvin.Tools.cscompiler import compile_file
-    app_info, issuetracker = compile_file(scriptfile, False, credentials)
+    app_info, issuetracker = compile_file(scriptfile, False, False, credentials)
     if issuetracker.error_count:
         fmt = "{type!c}: {reason} {script} {line}:{col}"
         for error in issuetracker.formatted_errors(sort_key='line', custom_format=fmt, script=scriptfile, line=0, col=0):
@@ -206,7 +206,8 @@ def dispatch_and_deploy(app_info, wait, uris, control_uri, attr, credentials):
     if timeout:
         process.join(timeout)
         RequestHandler().quit(rt)
-        time.sleep(0.1)
+        # This time has to be long enough for the mainloop to wrap things up, otherwise the program will hang indefinitely
+        time.sleep(1.0)
     else:
         process.join()
 
@@ -303,7 +304,7 @@ def runtime_certificate(rt_attributes):
                     ca = certificate_authority.CA(domain=domain_name,
                                                   security_dir=security_dir)
                     cert_path = ca.sign_csr(csr_path, is_ca=True)
-                    runtime.store_own_cert(certpath=cert_path, security_dir=security_dir)
+                    runtime.store_own_cert(certpath=cert_path)
 
                 else:
                     _log.debug("No runtime certicificate can be found, send CSR to CA")
@@ -339,7 +340,7 @@ def runtime_certificate(rt_attributes):
                     i=0
                     while not cert_available and i<len(ca_control_uris):
                         certstr=None
-                        #Repeatedly (maximum 10 attempts) send CSR to CA until a certificate is returned (this to remove the requirement of the CA 
+                        #Repeatedly (maximum 10 attempts) send CSR to CA until a certificate is returned (this to remove the requirement of the CA
                         #node to be be the first node to start)
                         rsa_encrypted_csr = runtime.get_encrypted_csr()
                         j=0
@@ -357,7 +358,7 @@ def runtime_certificate(rt_attributes):
                         i = i+1
                     #TODO: check that everything is ok with signed cert, e.g., check that the CA domain
                     # matches the expected and that the CA cert is trusted
-                    runtime.store_own_cert(certstring=certstr, security_dir=security_dir)
+                    runtime.store_own_cert(certstring=certstr)
             else:
                 _log.debug("Runtime certificate available")
 
