@@ -92,7 +92,16 @@ def register_actor(name):
   global actorId,actors
   actors.append(name)
   actorId += 1
+
   return actorId
+
+def get_actor_id(name):
+  global actors
+
+  if name in actors:
+    return actors.index(name)
+  else:
+    return register_actor(name)
 
 def update_actor(id, name):
   """ Store the actor name and return an ID to use in its place """
@@ -105,6 +114,14 @@ def register_method(method):
   methods.append(method)
   methodId += 1
   return methodId
+
+def refresh_method_id(method):
+  global methods
+
+  if method in actors:
+    return methods.index(method)
+  else:
+    return register_method(method)
 
 def store(int typeid, int actorid, unsigned int methodid, int valueDefined, double value):
   global buffer, bufferIndex, bufferSize, wrapped

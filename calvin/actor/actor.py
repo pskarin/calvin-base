@@ -37,7 +37,6 @@ import monitor
 
 _log = get_logger(__name__)
 
-
 # Tests in test_manage_decorator.py
 def manage(include=None, exclude=None):
 
@@ -354,7 +353,7 @@ class Actor(object):
         self._port_property_capabilities = None
         self._signature = None
         self._component_members = set([self._id])  # We are only part of component if this is extended
-        self._managed = set(('_id', '_name', '_has_started', '_deployment_requirements', '_signature', '_subject_attributes', '_migration_info', "_port_property_capabilities", "_replication_data"))
+        self._managed = set(('_id', '_name', '_has_started', '_deployment_requirements', '_signature', '_subject_attributes', '_migration_info', "_port_property_capabilities", "_replication_data", "monitorId", "methodId"))
         self._has_started = False
         self._calvinsys = None
         self.calvinsys = None
@@ -385,7 +384,7 @@ class Actor(object):
         self.monitorId = monitor.register_actor(self._name)
         self.methodId = []
         for method in self.__class__.action_priority:
-          self.methodId.append(monitor.register_method(method.__name__))
+            self.methodId.append(monitor.register_method(method.__name__))
         self.monitor_value = None
 
     def set_authorization_checks(self, authorization_checks):
@@ -393,7 +392,13 @@ class Actor(object):
 
     @verify_status([STATUS.LOADED])
     def setup_complete(self):
-        self.fsm.transition_to(Actor.STATUS.READY)
+        self.fsm.transition_to(Actor.STATUS.READY) 
+
+        self.monitorId = monitor.get_actor_id(self._name)
+        self.methodId = []
+        for method in self.__class__.action_priority:
+            self.methodId.append(monitor.refresh_method_id(method.__name__))
+        self.monitor_value = None
 
     def init(self):
         raise Exception("Implementing 'init()' is mandatory.")
@@ -470,12 +475,15 @@ class Actor(object):
                 if not p.is_connected():
                     return
 
+        _log.info("Actor:%s did connect" % self._name)
+
         # If we made it here, all ports are connected
         self.fsm.transition_to(Actor.STATUS.ENABLED)
         _log.debug("actor.did_connect ENABLED %s %s " % (self._name, self._id))
 
         # Actor enabled, inform scheduler
         self._calvinsys.scheduler_wakeup()
+
 
     @verify_status([STATUS.ENABLED, STATUS.PENDING, STATUS.DENIED, STATUS.MIGRATABLE])
     def did_disconnect(self, port):
@@ -566,7 +574,9 @@ class Actor(object):
         #
         # First make sure we are allowed to run
         #
+
         monitor.store(0, self.monitorId, 0, 0, 0)
+        
         if not self._authorized():
             return False
 
@@ -615,7 +625,6 @@ class Actor(object):
 
         monitor.store(2, self.monitorId, 0, 0, 0)
         return actor_did_fire
-
 
     def enabled(self):
         # We want to run even if not fully connected during exhaustion
