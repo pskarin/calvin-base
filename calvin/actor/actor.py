@@ -475,8 +475,6 @@ class Actor(object):
                 if not p.is_connected():
                     return
 
-        _log.info("Actor:%s did connect" % self._name)
-
         # If we made it here, all ports are connected
         self.fsm.transition_to(Actor.STATUS.ENABLED)
         _log.debug("actor.did_connect ENABLED %s %s " % (self._name, self._id))
