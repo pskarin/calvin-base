@@ -66,7 +66,7 @@ Start runtime, compile calvinscript and deploy application.
                            To enable on specific modules use 'module:level'")
 
     argparser.add_argument('-f', '--logfile', dest='logfile', action="store", default=None, type=str,
-                           help="Set logging to file, specify filename")
+                           help="Set logging to file, specify filename (using 'syslog' sends the log to syslog)")
 
     argparser.add_argument('-w', '--wait', dest='wait', metavar='sec', default=2, type=int,
                            help='wait for sec seconds before quitting (0 means forever).')

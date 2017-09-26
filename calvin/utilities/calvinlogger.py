@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import logging
+import logging.handlers
 import json
 import inspect
 import os
@@ -85,7 +86,12 @@ def _create_logger(filename=None):
 
         # create console handler and set level to debug
         if filename:
-            ch = logging.FileHandler(filename=filename, mode='w')
+            if filename == "syslog":
+              # TODO: Allow the format 'syslog:...' to specify syslog address. Domain sockets are /dev/log (typically) for Linux
+              # while OS X uses /var/run/syslog and Windows needs to send UDP somewhere.
+              ch = logging.handlers.SysLogHandler(address="/dev/log")
+            else:
+              ch = logging.FileHandler(filename=filename, mode='w')
         else:
             ch = logging.StreamHandler()
         ch.setLevel(5)
