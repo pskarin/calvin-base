@@ -28,8 +28,8 @@ setup(name='calvin',
       version='0.8',
       url="http://github.com/EricssonResearch/calvin-base",
       license="Apache Software License",
-      author="Ericsson Research",
-      author_email="N/A",
+      author="Team Calvin @ Ericsson Research",
+      author_email="labs@ericsson.com",
       tests_require=[
           'mock>1.0.1',
           'pytest>=1.4.25',
@@ -63,9 +63,9 @@ setup(name='calvin',
       platforms='any',
       test_suite="calvin.test.test_calvin",
       classifiers=[
-          "Programming Language :: Python",
+          "Programming Language :: Python :: 2",
           "Programming Language :: Python :: 2.7",
-          "Development Status :: 3 - Alpha",
+          "Development Status :: 4 - Beta",
           "License :: OSI Approved :: Apache Software License",
           "Operating System :: OS Independent",
           "Framework :: Twisted",
@@ -73,6 +73,8 @@ setup(name='calvin',
           "Intended Audience :: Developers",
           "Topic :: Software Development",
       ],
+      python_requires=">=2.7",
+      keywords= "iot dataflow actors distributed internet-of-things cloud-computing programming",
       entry_points={
           'console_scripts': [
               'csruntime=calvin.Tools.csruntime:main',
@@ -81,8 +83,7 @@ setup(name='calvin',
               'cscompile=calvin.Tools.cscompiler:main',
               'csmanage=calvin.Tools.csmanage:main',
               'csweb=calvin.Tools.www.csweb:main',
-              'csviz=calvin.Tools.csviz:main',
-              'csactortest=calvin.Tools.csactortest:main'
+              'csviz=calvin.Tools.csviz:main'
           ]
       },
       ext_modules = cythonize("calvin/actor/monitor.pyx")
