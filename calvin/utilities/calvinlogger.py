@@ -80,53 +80,69 @@ logging.addLevelName(5, "ANALYZE")
 def _create_logger(filename=None):
     global _log
     global _name
+    global _ch
     if _log is None:
+        _ch = None
+        formatter = None
         _log = logging.getLogger(_name)
         _log.setLevel(logging.INFO)
 
         # create console handler and set level to debug
         if filename:
-            if filename == "syslog":
+            if filename == "syslog" or filename.startswith("syslog:"):
               # TODO: Allow the format 'syslog:...' to specify syslog address. Domain sockets are /dev/log (typically) for Linux
               # while OS X uses /var/run/syslog and Windows needs to send UDP somewhere.
-              ch = logging.handlers.SysLogHandler(address="/dev/log")
+              arr=filename.split(":")
+              if len(arr) == 3:
+                ch = logging.handlers.SysLogHandler(address=(arr[1], int(arr[2])))
+              elif len(arr) == 2:
+                if arr[1][0] == '/':
+                  ch = logging.handlers.SysLogHandler(address=arr[1])
+                else:
+                  ch = logging.handlers.SysLogHandler(address=(arr[1], 514))
+              else:
+                ch = logging.handlers.SysLogHandler(address="/dev/log")
+              formatter = logging.Formatter('Calvin-noname: "%(message)s"')
             else:
               ch = logging.FileHandler(filename=filename, mode='w')
+            _ch = ch
         else:
             ch = logging.StreamHandler()
         ch.setLevel(5)
 
         # create formatter
-        colored = ColoredFormatter(
-            "%(asctime)-15s %(log_color)s%(levelname)-8s %(process)d-%(name)s%(reset)s: %(message)s",
-            datefmt=None,
-            reset=True,
-            log_colors={
-                'DEBUG': 'cyan',
-                'INFO': 'green',
-                'WARNING': 'yellow',
-                'ERROR': 'red',
-                'CRITICAL': 'red',
-            }
-        )
+        if formatter is None:
+          if _use_color:
+            formatter = ColoredFormatter(
+                "%(asctime)-15s %(log_color)s%(levelname)-8s %(process)d-%(name)s%(reset)s: %(message)s",
+                datefmt=None,
+                reset=True,
+                log_colors={
+                    'DEBUG': 'cyan',
+                    'INFO': 'green',
+                    'WARNING': 'yellow',
+                    'ERROR': 'red',
+                    'CRITICAL': 'red',
+                }
+            )
+          else:
+            formatter = ColoredFormatter(
+                "%(asctime)-15s %(levelname)-8s %(process)d-%(name)s: %(message)s",
+                datefmt=None,
+                reset=False,
+                log_colors={}
+            )
 
-        plain = ColoredFormatter(
-            "%(asctime)-15s %(levelname)-8s %(process)d-%(name)s: %(message)s",
-            datefmt=None,
-            reset=False,
-            log_colors={}
-        )
-
-        # formatter = logging.Formatter('%(asctime)-15s - %(levelname)-7s - %(name)s: %(message)s')s
-
-        # add formatter to ch
-        ch.setFormatter(colored if _use_color else plain)
-
+        ch.setFormatter(formatter)
         # add ch to logger
         _log.addHandler(ch)
 
     return _log
 
+def log_set_node_name(nodename):
+  global _ch
+  if _ch is not None:
+    _ch.setFormatter(logging.Formatter('Calvin-'+nodename+': "%(message)s"'))
 
 def set_file(filename):
     _create_logger(filename)
