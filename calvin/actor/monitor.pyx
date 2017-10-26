@@ -50,10 +50,10 @@ cdef struct Buffer:
   uint8_t data[PACKET_BUFFER_SIZE]
 
 cdef struct LogEntry:
-  unsigned int type
-  unsigned long timestamp
-  unsigned int actor
-  unsigned int method
+  uint32_t type
+  uint64_t timestamp
+  uint32_t actor
+  uint32_t method
   int valueDefined
   double value
 
@@ -139,7 +139,7 @@ def store(int typeid, int actorid, unsigned int methodid, int valueDefined, doub
 cdef checkpoint(Buffer * packet, uint64_t ts):
   packet.checkpoint_index = packet.index
   if packet.index == 0:
-    packet.startts
+    packet.startts = ts
   packet.endts = ts
 
 cdef ensure_capacity(Buffer * packet, uint32_t size):
