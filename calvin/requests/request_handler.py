@@ -54,6 +54,7 @@ APPLICATIONS = '/applications'
 DEPLOY = '/deploy'
 CONNECT = '/connect'
 DISCONNECT = '/disconnect'
+INDEX_PATH_RPL = '/index/{}?root_prefix_level={}'
 INDEX_PATH = '/index/{}'
 STORAGE_PATH = '/storage/{}'
 METER = '/meter'
@@ -319,12 +320,11 @@ class RequestHandler(object):
         r = self._delete(rt, timeout, async, APPLICATION_PATH.format(application_id))
         return self.check_response(r)
 
-    def deploy_application(self, rt, name, script, deploy_info=None, credentials=None, content=None,
+    def deploy_application(self, rt, name, script, deploy_info=None, content=None,
                            check=True, timeout=DEFAULT_TIMEOUT, async=False):
         data = {
             "name": name,
             "script": script,
-            "sec_credentials": credentials,
             "deploy_info": deploy_info,
             "check": check
         }
@@ -335,12 +335,11 @@ class RequestHandler(object):
         r = self._post(rt, timeout, async, DEPLOY, data)
         return self.check_response(r)
 
-    def deploy_app_info(self, rt, name, app_info, deploy_info=None, credentials=None, check=True,
+    def deploy_app_info(self, rt, name, app_info, deploy_info=None, check=True,
                         timeout=DEFAULT_TIMEOUT, async=False):
         data = {
             "name": name,
             "app_info": app_info,
-            "sec_credentials": credentials,
             "deploy_info": deploy_info,
             "check": check
         }
@@ -368,20 +367,27 @@ class RequestHandler(object):
         r = self._get(rt, timeout, async, METER_PATH_METAINFO.format(user_id))
         return self.check_response(r)
 
-    def add_index(self, rt, index, value, timeout=DEFAULT_TIMEOUT, async=False):
+    def add_index(self, rt, index, value, root_prefix_level=None, timeout=DEFAULT_TIMEOUT, async=False):
         data = {'value': value}
+        if root_prefix_level is not None:
+            data['root_prefix_level'] = root_prefix_level
         path = INDEX_PATH.format(index)
         r = self._post(rt, timeout, async, path, data)
         return self.check_response(r)
 
-    def remove_index(self, rt, index, value, timeout=DEFAULT_TIMEOUT, async=False):
+    def remove_index(self, rt, index, value, root_prefix_level=None, timeout=DEFAULT_TIMEOUT, async=False):
         data = {'value': value}
+        if root_prefix_level is not None:
+            data['root_prefix_level'] = root_prefix_level
         path = INDEX_PATH.format(index)
         r = self._delete(rt, timeout, async, path, data)
         return self.check_response(r)
 
-    def get_index(self, rt, index, timeout=DEFAULT_TIMEOUT, async=False):
-        r = self._get(rt, timeout, async, INDEX_PATH.format(index))
+    def get_index(self, rt, index, root_prefix_level=None, timeout=DEFAULT_TIMEOUT, async=False):
+        if root_prefix_level is None:
+            r = self._get(rt, timeout, async, INDEX_PATH.format(index))
+        else:
+            r = self._get(rt, timeout, async, INDEX_PATH_RPL.format(index, root_prefix_level))
         return self.check_response(r)
 
     def get_storage(self, rt, key, timeout=DEFAULT_TIMEOUT, async=False):

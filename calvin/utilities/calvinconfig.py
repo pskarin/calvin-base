@@ -89,8 +89,9 @@ class CalvinConfig(object):
                 'comment': 'User definable section',
                 'actor_paths': ['systemactors'],
                 'framework': 'twistedimpl',
-                'storage_type': 'dht', # supports dht, securedht, local, and proxy
+                'storage_type': 'dht', # supports dht, securedht, sql, local, and proxy
                 'storage_proxy': None,
+                'storage_sql': {},  # For SQL, should have the kwargs to connect + db-name. Defaults to insecure local
                 'capabilities_blacklist': [],
                 'remote_coder_negotiator': 'static',
                 'static_coder': 'json',
@@ -100,7 +101,8 @@ class CalvinConfig(object):
                 'stdout_plugin': 'defaultimpl',
                 'transports': ['calvinip'],
                 'control_proxy': None,
-                'fcm_server_secret': None
+                'fcm_server_secret': None,
+                'compiled_actors_path': None
             },
             'testing': {
                 'comment': 'Test settings',
@@ -183,6 +185,13 @@ class CalvinConfig(object):
     def add_section(self, section):
         """Add a named section"""
         self.config.setdefault(section.lower(), {})
+
+    def remove_section(self, section):
+        """Remove a named section if it exist"""
+        try:
+            del self.config[section.lower()]
+        except:
+            pass
 
     def get_in_order(self, option, default=None):
         v = self.get('ARGUMENTS', option)

@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
 from calvin.utilities import calvinuuid
 from calvin.utilities.utils import enum
 from calvin.utilities.calvin_callback import CalvinCB, CalvinCBClass
@@ -184,6 +185,7 @@ class CalvinProto(CalvinCBClass):
             # Hence it is possible for others to register additional
             # functions that should be called. Either permanent here
             # or using the callback_register method.
+            'GET_ACTOR_MODULE': [CalvinCB(self.get_actor_module_handler)],
             'PROXY_CONFIG': [CalvinCB(self.proxy_config_handler)],
             'SLEEP_REQUEST': [CalvinCB(self.proxy_sleep_request_handler)],
             'ACTOR_NEW': [CalvinCB(self.actor_new_handler)],
@@ -276,6 +278,35 @@ class CalvinProto(CalvinCBClass):
     # Remote commands supported by protocol
     #
 
+    def get_actor_module_handler(self, payload):
+        """ Handles actor module requests
+        """
+        # TODO: Create a generic handler for actor module requests and include
+        # information in the request needed to select the correct module
+        ok = False
+        actor_type = payload['actor_type']
+        data = None
+        path = _conf.get(None, 'compiled_actors_path')
+        if path is None:
+            _log.error("'compiled_actors_path' not set")
+        else:
+            if payload['compiler'] == 'mpy-cross':
+                try:
+                    path = path + '/mpy-cross/' + actor_type.replace('.', '/') + '.mpy'
+                    f = open(path, 'rb')
+                    data = f.read()
+                    f.close()
+                    ok = True
+                except IOError as e:
+                    _log.error("Failed to open '%s'" % path)
+            else:
+                _log.error("Unknown compiler '%s'" % payload['compiler'])
+        msg = {'cmd': 'REPLY', 'msg_uuid': payload['msg_uuid'],
+                'module': data,
+                'actor_type': actor_type,
+                'value': response.CalvinResponse(ok).encode()}
+        self.network.link_request(payload['from_rt_uuid'], callback=CalvinCB(send_message, msg=msg))
+
     #### PROXY NODES ####
 
     def proxy_config_handler(self, payload):
@@ -287,7 +318,7 @@ class CalvinProto(CalvinCBClass):
             self.network.link_get(payload['from_rt_uuid']),
             self.node.storage,
             CalvinCB(self.node.network.link_request, payload['from_rt_uuid'],
-                callback=CalvinCB(send_message, msg = {'cmd': 'REPLY', 'msg_uuid': payload['msg_uuid']})),
+                callback=CalvinCB(send_message, msg = {'cmd': 'REPLY', 'msg_uuid': payload['msg_uuid'], 'time': time.time()})),
             payload.get('attributes'))
 
     def proxy_sleep_request_handler(self, payload):

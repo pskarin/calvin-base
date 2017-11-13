@@ -254,8 +254,11 @@ class Actor(object):
     # Class variable controls action priority order
     action_priority = tuple()
 
+    # These are the security variables that will always be serialized, see serialize()/deserialize() below
+    _security_state_keys = ('_subject_attributes')
+
     # These are the instance variables that will always be serialized, see serialize()/deserialize() below
-    _private_state_keys = ('_id', '_name', '_has_started', '_deployment_requirements', '_signature', '_subject_attributes', '_migration_info', "_port_property_capabilities", "_replication_data")
+    _private_state_keys = ('_id', '_name', '_has_started', '_deployment_requirements', '_signature', '_migration_info', "_port_property_capabilities", "_replication_data")
 
     # Internal state (status)
     class FSM(object):
@@ -695,9 +698,7 @@ class Actor(object):
 
     def _set_private_state(self, state):
         """Deserialize and apply state common to all actors"""
-
         get_calvinsys().deserialize(actor=self, csobjects=state["_calvinsys"])
-
         for port in state['inports']:
             # Uses setdefault to support shadow actor
             self.inports.setdefault(port, actorport.InPort(port, self))._set_state(state['inports'][port])
@@ -717,6 +718,20 @@ class Actor(object):
                     obj.set_state(state.pop(key))
                 else:
                     self.__dict__[key] = state.pop(key, None)
+
+    def _security_state(self):
+        """
+        Serialize security state.
+        Security state can only contain objects that can be JSON-serialized.
+        """
+        return {'_subject_attributes':self._subject_attributes}
+
+    def _set_security_state(self, state):
+        """
+        Deserialize and apply security state.
+        Security state can only contain objects that can be JSON-serialized.
+        """
+        pass
 
     def _managed_state(self):
         """
@@ -740,12 +755,14 @@ class Actor(object):
         state = {}
         state['private'] = self._private_state(remap)
         state['managed'] = self._managed_state()
+        state['security']= self._security_state()
         state['custom'] = self.state()
         return state
 
     def deserialize(self, state):
         """Restore an actor's state from the serialized state."""
         self._set_private_state(state['private'])
+        self._set_security_state(state['security'])
         self._set_managed_state(state['managed'])
         self.set_state(state['custom'])
 

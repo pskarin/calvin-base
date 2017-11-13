@@ -1,9 +1,11 @@
 import json
+import re
 from calvin.requests import calvinresponse
 from calvin.utilities.calvin_callback import CalvinCB
 from calvin.utilities.calvinlogger import get_logger
 from routes import handler, register, uuid_re
 from authentication import authentication_decorator
+from calvin.utilities.attribute_resolver import format_index_string
 
 _log = get_logger(__name__)
 
@@ -15,13 +17,18 @@ def handle_post_index(self, handle, connection, match, data, hdr):
     Store value under index key
     Body:
     {
-        "value": <string>
+        "value": <string>,
+        "root_prefix_level": <int>  # optional
     }
     Response status code: OK or INTERNAL_ERROR
     Response: none
     """
+    kwargs = {}
+    if 'root_prefix_level' in data:
+        kwargs['root_prefix_level'] = int(data['root_prefix_level'])
     self.node.storage.add_index(
-        match.group(1), data['value'], cb=CalvinCB(self.index_cb, handle, connection))
+        match.group(1), data['value'], cb=CalvinCB(self.index_cb, handle, connection), **kwargs)
+
 
 @handler(r"DELETE /index/([0-9a-zA-Z\.\-/_]*)\sHTTP/1")
 @authentication_decorator
@@ -32,24 +39,32 @@ def handle_delete_index(self, handle, connection, match, data, hdr):
     Body:
     {
         "value": <string>
+        "root_prefix_level": <int>  # optional
     }
     Response status code: OK or INTERNAL_ERROR
     Response: none
     """
+    kwargs = {}
+    if 'root_prefix_level' in data:
+        kwargs['root_prefix_level'] = int(data['root_prefix_level'])
     self.node.storage.remove_index(
-        match.group(1), data['value'], cb=CalvinCB(self.index_cb, handle, connection))
+        match.group(1), data['value'], cb=CalvinCB(self.index_cb, handle, connection), **kwargs)
+
 
 # Can't be access controlled, as it is needed to find authorization server
-@handler(r"GET /index/([0-9a-zA-Z\.\-/_]*)\sHTTP/1")
+@handler(r"GET /index/([0-9a-zA-Z\.\-/_]*)(?:\?root_prefix_level=([0-9]*))?\sHTTP/1")
 def handle_get_index(self, handle, connection, match, data, hdr):
     """
-    GET /index/{key}
+    GET /index/{key}?root_prefix_level={level}
     Fetch values under index key
     Response status code: OK or NOT_FOUND
     Response: {"result": <list of strings>}
     """
+    kwargs = {}
+    if match.group(2) is not None:
+        kwargs['root_prefix_level'] = int(match.group(2))
     self.node.storage.get_index(
-        match.group(1), cb=CalvinCB(self.get_index_cb, handle, connection))
+        match.group(1), cb=CalvinCB(self.get_index_cb, handle, connection), **kwargs)
 
 
 @register
@@ -66,10 +81,10 @@ def index_cb(self, handle, connection, *args, **kwargs):
 
 
 @register
-def get_index_cb(self, handle, connection, key, value, *args, **kwargs):
+def get_index_cb(self, handle, connection, value, *args, **kwargs):
     """ Index operation response
     """
-    _log.debug("get index cb (in control) %s, %s" % (key, value))
+    _log.debug("get index cb (in control) %s" % (value))
     self.send_response(handle, connection, None if value is None else json.dumps({'result': value}),
                        status=calvinresponse.NOT_FOUND if value is None else calvinresponse.OK)
 
@@ -128,7 +143,7 @@ def handle_post_node_attribute_indexed_public_cb(self, key, value, handle, conne
             self.node.storage.add_index(indexed_string, key)
         value['attributes']['indexed_public'] = indexed_public
         self.node.storage.set(prefix="node-", key=key, value=value,
-            cb=CalvinCB(func=self.storage_cb, handle=handle, connection=connection))
+            cb=CalvinCB(self.index_cb, handle, connection))
     except Exception as e:
         _log.error("Failed to update node %s", e)
         self.send_response(handle, connection, None, status=calvinresponse.INTERNAL_ERROR)
@@ -153,8 +168,7 @@ def handle_post_node_attribute_indexed_public(self, handle, connection, match, d
                 self.node.storage.remove_node_index(self.node)
                 self.node.attributes.set_indexed_public(data)
                 self.node_name = self.node.attributes.get_node_name_as_str()
-                self.node.storage.add_node(self.node, CalvinCB(
-                    func=self.storage_cb, handle=handle, connection=connection))
+                self.node.storage.add_node(self.node, CalvinCB(self.index_cb, handle, connection))
             else:
                 self.send_response(handle, connection, None, status=calvinresponse.UNAUTHORIZED)
         else:
@@ -169,7 +183,7 @@ def handle_post_node_attribute_indexed_public(self, handle, connection, match, d
 
 @register
 def storage_cb(self, key, value, handle, connection):
-    missing = value is None or value is False
+    missing = calvinresponse.isfailresponse(value)
     self.send_response(handle, connection, None if missing else json.dumps(value),
                        status=calvinresponse.NOT_FOUND if missing else calvinresponse.OK)
 
@@ -259,8 +273,7 @@ def handle_resource_cpu_avail(self, handle, connection, match, data, hdr):
     Response status code: OK or INTERNAL_ERROR
     Response: none
     """
-    self.node.cpu_monitor.set_avail(data['value'],
-        CalvinCB(func=self.storage_cb, handle=handle, connection=connection))
+    self.node.cpu_monitor.set_avail(data['value'], CalvinCB(self.index_cb, handle, connection))
 
 @handler(r"POST /node/resource/memAvail\sHTTP/1")
 @authentication_decorator
@@ -275,5 +288,4 @@ def handle_resource_mem_avail(self, handle, connection, match, data, hdr):
     Response status code: OK or INTERNAL_ERROR
     Response: none
     """
-    self.node.mem_monitor.set_avail(data['value'],
-        CalvinCB(func=self.storage_cb, handle=handle, connection=connection))
+    self.node.mem_monitor.set_avail(data['value'], CalvinCB(self.index_cb, handle, connection))
