@@ -22,6 +22,5 @@ def req_op(node, name, actor_id=None, component=None):
     """
         Shortcut to add requirement on the name of a runtime.
     """
-
     index = {"node_name": {"name": name}}
     return node_attr_match.req_op(node, index, actor_id, component)

@@ -92,7 +92,7 @@ def compile_script_check_security(source_text, filename, cb, security=None, cont
     # This used to be
     # _handle_policy_decision(source_text, filename, verify, access_decision=True, security=None, org_cb=cb)
     # but since _handle_policy_decision is called with access_decision=True, security=None only compile_script would be called
-    deployable, issuetracker = compile_script(source_text, appname)
+    deployable, issuetracker = compile_script(source_text, appname, verify=verify)
     cb(deployable, issuetracker, security=None)
 
 
