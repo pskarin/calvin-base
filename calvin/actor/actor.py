@@ -341,7 +341,7 @@ class Actor(object):
         self._port_property_capabilities = None
         self._signature = None
         self._component_members = set([self._id])  # We are only part of component if this is extended
-        self._managed = set(('_id', '_name', '_has_started', '_deployment_requirements', '_signature', '_subject_attributes', '_migration_info', "_port_property_capabilities", "_replication_data", "monitorId", "methodId"))
+        self._managed = set()
         self._has_started = False
         self._calvinsys = None
         self.calvinsys = None
