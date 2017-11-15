@@ -21,12 +21,14 @@ import inspect
 import os
 import traceback
 
+from twisted.python import log as twisted_logger
+
 from colorlog import ColoredFormatter
 
 _name = "calvin"
 _log = None
 _use_color = False
-
+_ch_handler = None
 
 class JSONEncoderIters(json.JSONEncoder):
     def default(self, o):
@@ -80,7 +82,7 @@ logging.addLevelName(5, "ANALYZE")
 def _create_logger(filename=None):
     global _log
     global _name
-    global _ch
+    global _ch_handler
     if _log is None:
         _ch = None
         formatter = None
@@ -136,6 +138,7 @@ def _create_logger(filename=None):
         ch.setFormatter(formatter)
         # add ch to logger
         _log.addHandler(ch)
+        _ch_handler = ch # To allow further logger to use the same handler        
 
     return _log
 
@@ -144,6 +147,13 @@ def log_set_node_name(nodename):
   if _ch is not None:
     _ch.setFormatter(logging.Formatter('Calvin-'+nodename+': "%(message)s"'))
 
+def add_logging_handler(logger_name):
+    global _ch_handler
+    try:
+        logging.getLogger(logger_name).addHandler(_ch_handler)
+    except Exception as e:
+        _log.error("Could not add logger {}: {}".format(logger_name, e))
+    
 def set_file(filename):
     _create_logger(filename)
 

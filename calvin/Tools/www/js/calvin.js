@@ -66,10 +66,7 @@ function showInfo(message)
 // Clear log table
 function clearLog()
 {
-  var tableRef = document.getElementById('logTable');
-  for(var i = 0; i < tableRef.rows.length;) {
-     tableRef.deleteRow(i);
-  }
+  clearTableWithHeader(document.getElementById('logTable'));
 }
 
 function addActorToGraph(actor)
@@ -146,6 +143,13 @@ function addPortToGraph(port)
   }
 }
 
+$(window).resize(function() {
+  if (graphTimer) {
+    clearTimeout(graphTimer);
+  }
+  graphTimer = setTimeout(updateGraph, 1000);
+});
+
 function updateGraph()
 {
   graph.nodes().forEach(function(v) {
@@ -164,12 +168,14 @@ function updateGraph()
   // Run the renderer. This is what draws the final graph.
   render(svg.select("g"), graph);
 
-  svg.attr("width", 1000);
-  svg.attr("height", 600);
+  var applicationGraph = document.getElementById("applicationGraph");
+  svg.attr("width", applicationGraph.clientWidth);
+  svg.attr("height", window.innerHeight/1.5);
 }
 
 // Clear application graph
-function clearApplicationGraph() {
+function clearApplicationGraph()
+{
   document.getElementById("applicationGraph").innerHTML = "";
 
   graph = new dagreD3.graphlib.Graph({compound:true})
@@ -179,11 +185,7 @@ function clearApplicationGraph() {
               .setDefaultEdgeLabel(function() { return {}; });
   render = new dagreD3.render();
   svg = d3.select("#applicationGraph").append("svg");
-  svg.attr("width", document.getElementById("applicationGraph").width);
-  svg.attr("height", document.getElementById("applicationGraph").height);
   svgGroup = svg.append("g");
-  svg.attr("width", 1000);
-  svg.attr("height", 600);
 }
 
 function drawConnections()
@@ -371,6 +373,14 @@ function clearTable(tableRef)
   }
 }
 
+// Helper to clear table with header
+function clearTableWithHeader(tableRef)
+{
+  for(var i = 1; i < tableRef.rows.length;) {
+    tableRef.deleteRow(i);
+  }
+}
+
 // Helper to clear combobox
 function clearCombo(selectbox)
 {
@@ -435,8 +445,8 @@ function connect()
   var applicationSelector = document.getElementById("applicationSelector");
   var traceApplicationSelector = document.getElementById("traceApplicationSelector");
 
-  clearTable(document.getElementById("peersTable"));
-  clearTable(document.getElementById('logTable'));
+  clearTableWithHeader(document.getElementById("peersTable"));
+  clearTableWithHeader(document.getElementById('logTable'));
   clearTable(document.getElementById("applicationsTable"));
   clearTable(document.getElementById("actorsTable"));
   clearTable(document.getElementById("actorPortsTable"));
@@ -1499,6 +1509,10 @@ function migrate(actor_id)
     }
     var node = findRuntime(actor.peer_id);
     if (node) {
+      if (node.proxy) {
+        console.log("Using proxy for migration");
+        node = findRuntime(node.proxy);
+      }
       if (node.control_uris) {
         var url = node.control_uris[0] + '/actor/' + actor.id + '/migrate';
         var data = JSON.stringify({'peer_node_id': peer_id});
@@ -1865,10 +1879,10 @@ function eventHandler(event)
   var trace_size = $("#trace_size").val();
   var data = JSON.parse(event.data);
   var tableRef = document.getElementById('logTable');
-  if (tableRef.rows.length >= trace_size) {
-    tableRef.deleteRow(tableRef.rows.length -1);
+  if (tableRef.rows.length > trace_size) {
+    tableRef.deleteRow(tableRef.rows.length - 1);
   }
-  var newRow = tableRef.insertRow(0);
+  var newRow = tableRef.insertRow(1);
   var cell0 = newRow.insertCell(0);
   var cell1 = newRow.insertCell(1);
   var cell2 = newRow.insertCell(2);
