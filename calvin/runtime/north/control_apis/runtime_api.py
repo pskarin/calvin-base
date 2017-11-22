@@ -7,6 +7,8 @@ from routes import handler, register
 from authentication import authentication_decorator
 from calvin.runtime.north.calvinsys import get_calvinsys
 from calvin.runtime.north.calvinlib import get_calvinlib
+import calvin.runtime.north.calvin_metrics as metrics
+import sys
 
 _log = get_logger(__name__)
 
@@ -121,3 +123,41 @@ def handle_options(self, handle, connection, match, data, hdr):
         self.tunnel_client.send(msg)
     else:
         connection.send(response)
+
+@handler(r"GET /metrics\sHTTP/1")
+@authentication_decorator
+def handle_get_metrics(self, handle, connection, match, data, hdr):
+    """
+    GET /metrics
+    List the metrics this runtime supports
+    Response status code: OK
+    Response: List of metrics
+    """
+    self.send_response(handle, connection, json.dumps(self.node.metrics.ids()))
+
+@handler(r"POST /metrics\sHTTP/1")
+@authentication_decorator
+def handle_post_metrics(self, handle, connection, match, data, hdr):
+    """
+    POST /metrics
+    Post information to a metrics. Metrics may be partially updated, appended to etc. Use PUT
+    to overwrite a metric with a complete data set.
+    Response status code: OK
+    Response: none
+    """
+    for key,val in data.items():
+      if not self.node.metrics.post(key, val):
+        _log.error("Failed to set metric {:s}".format(key))
+    self.send_response(handle, connection, None, status=calvinresponse.ACCEPTED)
+
+@handler(r"POST /metrics/"+metrics.regex_identifier+"\sHTTP/1")
+@authentication_decorator
+def handle_post_metrics(self, handle, connection, match, data, hdr):
+    """
+    POST /metrics/{provider}:{category}:{name}
+    Post information to a metric
+    Response status code: OK
+    Response: none
+    """
+    self.node.metrics.post(match.group(1), data)
+    self.send_response(handle, connection, None, status=calvinresponse.ACCEPTED)

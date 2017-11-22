@@ -51,6 +51,7 @@ from calvin.utilities import calvinconfig
 from calvin.runtime.north.resource_monitor.cpu import CpuMonitor
 from calvin.runtime.north.resource_monitor.memory import MemMonitor
 from calvin.runtime.north.proxyhandler import ProxyHandler
+from calvin.runtime.north.calvin_metrics import CalvinMetrics
 
 _log = get_logger(__name__)
 _conf = calvinconfig.get()
@@ -114,6 +115,7 @@ class Node(object):
         self.am = actormanager.ActorManager(self)
         self.rm = replicationmanager.ReplicationManager(self)
         self.control = calvincontrol.get_calvincontrol()
+        self.metrics = CalvinMetrics()
 
         # _scheduler = scheduler.DebugScheduler if _log.getEffectiveLevel() <= logging.DEBUG else scheduler.Scheduler
         _scheduler = scheduler.SimpleScheduler
