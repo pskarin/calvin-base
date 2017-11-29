@@ -82,6 +82,7 @@ logging.addLevelName(5, "ANALYZE")
 def _create_logger(filename=None):
     global _log
     global _name
+    global _ch
     global _ch_handler
     if _log is None:
         _ch = None
