@@ -46,6 +46,12 @@ port_property_data = {
                 'direction': "out",
                 'multipeer': True
             },
+            'collect-lifo': {
+                'doc': """
+                    Collect tokens from multiple peers, last come first serve.
+                    """,
+                'direction': "in"
+            },
             'collect-unordered': {
                 'doc': """
                     Collect tokens from multiple peers, actions see

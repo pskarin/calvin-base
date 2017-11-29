@@ -16,6 +16,7 @@
 
 # Queues
 _MODULES = {'fanout_fifo': 'FanoutFIFO',
+            'collect_lifo': 'CollectLIFO',
             'collect_unordered': 'CollectUnordered',
             'collect_tagged': "CollectTagged",
             'collect_synced': 'CollectSynced',
@@ -61,6 +62,8 @@ def get(port, peer_port=None, peer_port_meta=None):
             selected_queue = "collect_synced"
         elif routing_prop == 'collect-any-tagged':
             selected_queue = "collect_any"
+        elif routing_prop == 'collect-lifo':
+            selected_queue = "collect_lifo"
         else:
             selected_queue = "fanout_fifo"
     try:
