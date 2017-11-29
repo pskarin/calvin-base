@@ -369,7 +369,7 @@ class Actor(object):
                              disable_transition_checks=disable_transition_checks,
                              disable_state_checks=disable_state_checks)
         # self.metering.add_actor_info(self)
-        self.monitorId = monitor.register_actor(self._name)
+        self.monitorId = monitor.register_actor(self._type)
         self.methodId = []
         for method in self.__class__.action_priority:
             self.methodId.append(monitor.register_method(method.__name__))
@@ -382,7 +382,7 @@ class Actor(object):
     def setup_complete(self):
         self.fsm.transition_to(Actor.STATUS.READY) 
 
-        self.monitorId = monitor.get_actor_id(self._name)
+        self.monitorId = monitor.get_actor_id(self._type)
         self.methodId = []
         for method in self.__class__.action_priority:
             self.methodId.append(monitor.refresh_method_id(method.__name__))
@@ -623,6 +623,7 @@ class Actor(object):
         Fire an actor.
         Returns tuple (did_fire, output_ok, exhausted)
         """
+        monitor.store(0, self.monitorId, 0, 0, 0)
         #
         # Go over the action priority list once
         #
@@ -631,6 +632,7 @@ class Actor(object):
             # Action firing should fire the first action that can fire
             if did_fire:
                 break
+        monitor.store(2, self.monitorId, 0, 0, 0)
         return did_fire, output_ok, exhausted
 
 

@@ -6,6 +6,7 @@ import time
 import sys
 import uuid
 import platform
+import re
 
 cdef struct CTF_metadata_packet_header:
   uint32_t  magic
@@ -92,7 +93,7 @@ def register_actor(name):
   global actorId,actors
   actors.append(name)
   actorId += 1
-
+  sys.stderr.write("Register actor {}\n".format(name))
   return actorId
 
 def get_actor_id(name):
@@ -106,6 +107,7 @@ def get_actor_id(name):
 def update_actor(id, name):
   """ Store the actor name and return an ID to use in its place """
   global actors
+  sys.stderr.write("Update actor {} => {}\n".format(actors[id], name))
   actors[id] = name
 
 def register_method(method):
@@ -113,6 +115,7 @@ def register_method(method):
   global methodId,methods
   methods.append(method)
   methodId += 1
+  sys.stderr.write("Register method  {}\n".format(method))
   return methodId
 
 def refresh_method_id(method):
@@ -124,6 +127,7 @@ def refresh_method_id(method):
     return register_method(method)
 
 def store(int typeid, int actorid, unsigned int methodid, int valueDefined, double value):
+  sys.stderr.write("Monitor:store\n")
   global buffer, bufferIndex, bufferSize, wrapped
   buffer[bufferIndex].type = typeid
   buffer[bufferIndex].timestamp = long(time.time()*1000000000)
@@ -206,14 +210,15 @@ def finish():
 
   metadata = get_CTF_metadata().encode('utf8')
 
-  cdef FILE * fp = fopen("metadata", "wb")
+  # TODO: Create folder trace/
+  cdef FILE * fp = fopen("trace/metadata", "wb")
   if (fp):
     header = "/* CTF 1.8 */".encode('utf8')
     fwrite(<char *>header, 1, len(header), fp)
     fwrite(<char *>metadata, 1, len(metadata), fp)
     fclose(fp)
   
-  fp = fopen("channel0", "wb")
+  fp = fopen("trace/channel0", "wb")
   memset(&packet, 0, sizeof(packet))
   packet.fp = fp
   packet.capacity = PACKET_BUFFER_SIZE
@@ -258,7 +263,7 @@ def get_CTF_metadata():
 
   actorenum = "enum e_actors: uint32_t {\n"
   for i in range(0, len(actors)):
-    actorenum += "  " + actors[i] + ",\n"
+    actorenum += "  " + re.sub("[.:]", "_", actors[i])+ ",\n"
   actorenum += "};\n"
 
   methodenum = "enum e_methods: uint32_t {\n"
