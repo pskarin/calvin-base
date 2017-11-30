@@ -5,10 +5,9 @@
 #      tools, real-time monitoring, low memory footprint and potentially trace time synchronization between peers.  
 
 ##### Action types. These go into the typeid of CTF data.
-cdef enum:
-  ACTOR_FIRE_ENTER = 0
-  ACTOR_METHOD_FIRE = 1
-  ACTOR_FIRE_EXIT = 2
+ACTOR_FIRE_ENTER = 0
+ACTOR_METHOD_FIRE = 1
+ACTOR_FIRE_EXIT = 2
 
 ##### Define trace buffer
 
@@ -118,8 +117,28 @@ def _store_ctf(int typeid, int actorid, unsigned int methodid, int valueDefined,
     bufferIndex = 0
     wrapped = True
 
-store = _store_ctf
+# ĹTTng tracepoints
+cdef extern:
+  void lttng_calvin_actor_fire_enter(const char *)
+  void lttng_calvin_actor_fire_exit(const char *)
+  void lttng_calvin_actor_method_fire(const char * actor_id, const char * method_id, int hasvalue, double value)
 
+# LTTng function dict
+lttngf = {
+  0: lambda aid,mid,hasvalue,value: lttng_calvin_actor_fire_enter(actors[aid]),
+  1: lambda aid,mid,hasvalue,value: lttng_calvin_actor_method_fire(actors[aid],methods[mid],hasvalue,value),
+  2: lambda aid,mid,hasvalue,value: lttng_calvin_actor_fire_exit(actors[aid]),
+};
+
+def _store_lttng(int typeid, int actorid, unsigned int methodid, int valueDefined, double value):
+  if typeid < len(lttngf):
+    lttngf[typeid](actorid, methodid, valueDefined, value)
+    
+def _store_both(int typeid, int actorid, unsigned int methodid, int valueDefined, double value):
+  _store_lttng(typeid, actorid, methodid, valueDefined, value)
+  _store_ctf(typeid, actorid, methodid, valueDefined, value)
+
+store = _store_lttng
 
 ##### Write to file
 import platform
@@ -193,13 +212,3 @@ def finish():
   ctfc.writepacket(&packet)
   fclose(fp) 
   trace_uuid = uuid.uuid4()
-
-##### ĹTTng tracepoints
-cdef extern:
-  void lttng_calvin_actor_fire(int x)
-
-def test():
-  import sys
-  sys.stderr.write("LTTNG\n");
-  lttng_calvin_actor_fire(0)
-

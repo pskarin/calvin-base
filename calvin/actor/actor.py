@@ -566,7 +566,7 @@ class Actor(object):
         # First make sure we are allowed to run
         #
 
-        tracing.store(0, self.monitorId, 0, 0, 0)
+        tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0, 0, 0)
         
         if not self._authorized():
             return False
@@ -586,13 +586,10 @@ class Actor(object):
                 # hence when fired start from the beginning priority list
                 if did_fire:
                     if self.monitor_value is not None:
-                      tracing.store(1, self.monitorId, self.methodId[ai], 1, self.monitor_value)
+                      tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], 1, self.monitor_value)
                       self.monitor_value = None
                     else:
-                      tracing.store(1, self.monitorId, self.methodId[ai], 0, 0)
-                    # # FIXME: Add hooks for metering and probing
-                    # self.metering.fired(self._id, action_method.__name__)
-                    # self.control.log_actor_firing( ... )
+                      tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], 0, 0)
                     break
 
             #
@@ -614,7 +611,7 @@ class Actor(object):
                 self._handle_exhaustion(exhausted, output_ok)
                 done = True
 
-        tracing.store(2, self.monitorId, 0, 0, 0)
+        tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0, 0, 0)
         return actor_did_fire
 
     @verify_status([STATUS.ENABLED])
@@ -623,16 +620,24 @@ class Actor(object):
         Fire an actor.
         Returns tuple (did_fire, output_ok, exhausted)
         """
-        tracing.store(0, self.monitorId, 0, 0, 0)
+        tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0, 0, 0)
+
         #
         # Go over the action priority list once
         #
-        for action_method in self.__class__.action_priority:
+        for ai in range(len(self.__class__.action_priority)):
+            action_method = self.__class__.action_priority[ai]
             did_fire, output_ok, exhausted = action_method(self)
             # Action firing should fire the first action that can fire
             if did_fire:
+                if self.monitor_value is not None:
+                    tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], 1, self.monitor_value)
+                    self.monitor_value = None
+                else:
+                    tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], 0, 0)
                 break
-        tracing.store(2, self.monitorId, 0, 0, 0)
+
+        tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0, 0, 0)
         return did_fire, output_ok, exhausted
 
 
