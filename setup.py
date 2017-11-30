@@ -15,7 +15,7 @@
 # limitations under the License.
 
 import os
-from setuptools import setup
+from setuptools import setup, Extension
 from Cython.Build import cythonize
 
 
@@ -23,6 +23,16 @@ def read_description(fname):
     with open(os.path.join(os.path.dirname(__file__), fname)) as fp:
         return fp.read()
 
+extensions = [
+  Extension('ctf',
+    sources = ['calvin/tracing/ctf.pyx']
+  ),
+  Extension('calvin.tracing',
+    include_dirs = ['calvin/tracing'],
+    libraries = ['lttng-ust'],
+    sources = ['calvin/tracing/lttng-calvinprobes.c', 'calvin/tracing/lttng-calvindef.c', 'calvin/tracing/tracing.pyx']
+  ),
+]
 
 setup(name='calvin',
       version='0.8',
@@ -86,5 +96,5 @@ setup(name='calvin',
               'csviz=calvin.Tools.csviz:main'
           ]
       },
-      ext_modules = cythonize("calvin/actor/monitor.pyx")
+      ext_modules = cythonize(extensions)
       )

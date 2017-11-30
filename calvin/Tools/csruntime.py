@@ -22,7 +22,7 @@ import traceback
 import logging
 import os
 import socket
-import calvin.actor.monitor as monitor
+import calvin.tracing as tracing
 import atexit
 
 # Calvin related imports must be in functions, to be able to set logfile before imports
@@ -362,7 +362,7 @@ def runtime_certificate(rt_attributes):
                 _log.debug("Runtime certificate available")
 
 def exithandler(sig=None, stack=None):
-  monitor.finish()
+  tracing.finish()
   os._exit(0)
 
 def main():
@@ -378,7 +378,7 @@ def main():
     set_loglevel(args.loglevel, args.logfile)
     set_config_from_args(args)
 
-    monitor.allocate(args.probe_buffer_size)
+    tracing.allocate(args.probe_buffer_size)
 
     app_info = None
 
