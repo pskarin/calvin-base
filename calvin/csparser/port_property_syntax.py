@@ -52,6 +52,12 @@ port_property_data = {
                     """,
                 'direction': "in"
             },
+            'collect-single-slot': {
+                'doc': """
+                    Collect tokens from multiple peers, one slot that is overwritten.
+                    """,
+                'direction': "in"
+            },
             'collect-unordered': {
                 'doc': """
                     Collect tokens from multiple peers, actions see

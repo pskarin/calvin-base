@@ -17,6 +17,7 @@
 # Queues
 _MODULES = {'fanout_fifo': 'FanoutFIFO',
             'collect_lifo': 'CollectLIFO',
+            'collect_single_slot': 'CollectSingleSlot',
             'collect_unordered': 'CollectUnordered',
             'collect_tagged': "CollectTagged",
             'collect_synced': 'CollectSynced',
@@ -64,6 +65,8 @@ def get(port, peer_port=None, peer_port_meta=None):
             selected_queue = "collect_any"
         elif routing_prop == 'collect-lifo':
             selected_queue = "collect_lifo"
+        elif routing_prop == 'collect-single-slot':
+            selected_queue = "collect_single_slot"
         else:
             selected_queue = "fanout_fifo"
     try:
