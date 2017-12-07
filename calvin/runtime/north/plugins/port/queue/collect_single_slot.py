@@ -26,7 +26,7 @@ class CollectSingleSlot(object):
     '''
     Just one slot
     '''
-
+    
     def __init__(self, port_properties, peer_port_properties):
         super(CollectSingleSlot, self).__init__()
         # Set default queue length to 4 if not specified
@@ -69,7 +69,7 @@ class CollectSingleSlot(object):
 
     def _set_state(self, state):
         self._type = state.get('queuetype',self._type)
-        self.lifo = Token.decode(state['token']) 
+        self.token = Token.decode(state['token']) 
         self.readers = set(state['readers'])
         self.read_ready = state['read_ready']
         self.tentative_read_ready = state['tentative_read_ready']
