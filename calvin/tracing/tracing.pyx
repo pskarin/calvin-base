@@ -6,8 +6,9 @@
 
 ##### Action types. These go into the typeid of CTF data.
 ACTOR_FIRE_ENTER = 0
-ACTOR_METHOD_FIRE = 1
-ACTOR_FIRE_EXIT = 2
+ACTOR_FIRE_EXIT = 1
+ACTOR_METHOD_FIRE = 2
+ACTOR_METHOD_FIRE_D = 3
 
 ##### Define trace buffer
 
@@ -19,7 +20,6 @@ cdef struct LogEntry:
   uint64_t timestamp
   uint32_t actor
   uint32_t method
-  int valueDefined
   double value
 
 cdef int bufferSize = 1
@@ -104,13 +104,12 @@ def refresh_method_id(method):
 
 ##### Generic store tracepoint
 # This binds to a store function
-def _store_ctf(int typeid, int actorid, unsigned int methodid, int valueDefined, double value):
+def _store_ctf(int typeid, int actorid, unsigned int methodid, double value):
   global buffer, bufferIndex, bufferSize, wrapped
   buffer[bufferIndex].type = typeid
   buffer[bufferIndex].timestamp = long(time.time()*1000000000)
   buffer[bufferIndex].actor = actorid
   buffer[bufferIndex].method = methodid
-  buffer[bufferIndex].valueDefined = valueDefined
   buffer[bufferIndex].value = value
   bufferIndex += 1
   if bufferIndex == bufferSize:
@@ -121,22 +120,23 @@ def _store_ctf(int typeid, int actorid, unsigned int methodid, int valueDefined,
 cdef extern:
   void lttng_calvin_actor_fire_enter(const char *)
   void lttng_calvin_actor_fire_exit(const char *)
-  void lttng_calvin_actor_method_fire(const char * actor_id, const char * method_id, int hasvalue, double value)
+  void lttng_calvin_actor_method_fire(const char * actor_id, const char * method_id)
+  void lttng_calvin_actor_method_fire_d(const char * actor_id, const char * method_id, double value)
 
 # LTTng function dict
 lttngf = {
-  0: lambda aid,mid,hasvalue,value: lttng_calvin_actor_fire_enter(actors[aid]),
-  1: lambda aid,mid,hasvalue,value: lttng_calvin_actor_method_fire(actors[aid],methods[mid],hasvalue,value),
-  2: lambda aid,mid,hasvalue,value: lttng_calvin_actor_fire_exit(actors[aid]),
+  0: lambda aid,mid,value: lttng_calvin_actor_fire_enter(actors[aid]),
+  1: lambda aid,mid,value: lttng_calvin_actor_fire_exit(actors[aid]),
+  2: lambda aid,mid,value: lttng_calvin_actor_method_fire(actors[aid],methods[mid]),
+  3: lambda aid,mid,value: lttng_calvin_actor_method_fire_d(actors[aid],methods[mid],value),
 };
 
-def _store_lttng(int typeid, int actorid, unsigned int methodid, int valueDefined, double value):
-  if typeid < len(lttngf):
-    lttngf[typeid](actorid, methodid, valueDefined, value)
+def _store_lttng(int typeid, int actorid, unsigned int methodid, double value):
+  lttngf[typeid](actorid, methodid, value)
     
-def _store_both(int typeid, int actorid, unsigned int methodid, int valueDefined, double value):
-  _store_lttng(typeid, actorid, methodid, valueDefined, value)
-  _store_ctf(typeid, actorid, methodid, valueDefined, value)
+def _store_both(int typeid, int actorid, unsigned int methodid, double value):
+  _store_lttng(typeid, actorid, methodid, value)
+  _store_ctf(typeid, actorid, methodid, value)
 
 store = _store_lttng
 
@@ -146,8 +146,9 @@ from libc.string cimport memset
 from libc.stdio cimport FILE, fopen, fclose, fwrite
 import ctf          # CTF Python bindings
 cimport ctf as ctfc   # CTF C bindings
+import os
 
-def finish():
+def finish(name):
   global buffer,bufferIndex,bufferSize,actors,methods,wrapped,trace_uuid,clock_offset
 
   cdef ctfc.Buffer packet
@@ -165,15 +166,18 @@ def finish():
 
   metadata = ctf.get_CTF_metadata(trace_uuid, platform, clock_offset, actors, methods).encode('utf8')
 
-  # TODO: Create folder trace/
-  cdef FILE * fp = fopen("trace/metadata", "wb")
+  tracedirpath = os.path.join(os.environ['HOME'], "trace", name or "noname")
+  if not os.path.exists(tracedirpath):
+    os.makedirs(tracedirpath)
+  cdef FILE * fp = fopen(os.path.join(tracedirpath, "metadata"), "wb+")
   if (fp):
     header = "/* CTF 1.8 */".encode('utf8')
     fwrite(<char *>header, 1, len(header), fp)
     fwrite(<char *>metadata, 1, len(metadata), fp)
     fclose(fp)
-  
-  fp = fopen("trace/channel0", "wb")
+
+ 
+  fp = fopen(os.path.join(tracedirpath, "channel0"), "wb")
   memset(&packet, 0, sizeof(packet))
   packet.fp = fp
   packet.capacity = ctfc.PACKET_BUFFER_SIZE
@@ -186,12 +190,14 @@ def finish():
       end = bufferIndex+bufferSize
     for _i in range(start, end):
       i = _i%bufferSize;
+
+      # Semicolon separated terminal output 
       sys.stdout.write("{};{};{};{};".format(int(buffer[i].timestamp/1000), actors[buffer[i].actor], 
         types[buffer[i].type], methods[buffer[i].method]))
-      if buffer[i].valueDefined == 1:
-        sys.stdout.write("{}".format(buffer[i].value))
+      sys.stdout.write("{}".format(buffer[i].value))
       print("")
 
+      # CTF trace
       if (fp):
         # Writes the event header
         ctfc.addUint32(&packet, 0xaaddaadd)
@@ -200,9 +206,9 @@ def finish():
                 
         # Write event
         ctfc.addUint32(&packet, buffer[i].actor)
-        if buffer[i].type == 1:
+        if buffer[i].type == ACTOR_METHOD_FIRE or buffer[i].type == ACTOR_METHOD_FIRE_D:
           ctfc.addUint32(&packet, buffer[i].method)
-          if buffer[i].valueDefined == 1:
+          if buffer[i].type == ACTOR_METHOD_FIRE_D:
             ctfc.addDouble(&packet, buffer[i].value)
           else:
             ctfc.addDouble(&packet, 0)
@@ -210,5 +216,5 @@ def finish():
         ctfc.checkpoint(&packet, buffer[i].timestamp-clock_offset)
 
   ctfc.writepacket(&packet)
-  fclose(fp) 
+  if (fp): fclose(fp) 
   trace_uuid = uuid.uuid4()

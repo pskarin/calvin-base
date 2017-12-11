@@ -52,6 +52,34 @@ TRACEPOINT_EVENT(
     actor_method_fire,     // Tracepoint name
     TP_ARGS(              // Input arguments
         const char *, actor_id,
+        const char *, method_id
+    ),
+    TP_FIELDS(            // Output event fields
+        ctf_string(actor, actor_id)
+        ctf_string(method, method_id)
+    )
+)
+
+TRACEPOINT_EVENT(
+    com_ericsson_calvin,  // Tracepoint provider
+    actor_method_fire_d,     // Tracepoint name
+    TP_ARGS(              // Input arguments
+        const char *, actor_id,
+        const char *, method_id,
+        double, value
+    ),
+    TP_FIELDS(            // Output event fields
+        ctf_string(actor, actor_id)
+        ctf_string(method, method_id)
+        ctf_float(double, value, value)
+    )
+)
+
+TRACEPOINT_EVENT(
+    com_ericsson_calvin,  // Tracepoint provider
+    actor_queue,     // Tracepoint name
+    TP_ARGS(              // Input arguments
+        const char *, actor_id,
         const char *, method_id,
         int, hasvalue,
         double, value

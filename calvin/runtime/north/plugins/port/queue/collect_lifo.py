@@ -242,7 +242,7 @@ class CollectLIFO(object):
         if self.termination:
             _log.debug("COMMIT %s %s" % (metadata, {k:DISCONNECT.reverse_mapping[v[0]] for k, v in self.termination.items()}))
         if (self.termination.get(metadata, (-1,))[0] in [DISCONNECT.EXHAUST_PEER_RECV, DISCONNECT.EXHAUST_INPORT] and
-            min( [len(poss) for poss in self.read_pos.values()] or [0]) >0 and
+            min([len(poss) for poss in self.read_pos.values()] or [0]) and
             self.termination.get(metadata, (-1, False))[1]):
             del self.termination[metadata]
             terminated = True
