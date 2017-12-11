@@ -252,10 +252,4 @@ class CollectSingleSlot(object):
     # 
 
     def com_write(self, data, metadata, sequence_nbr):
-        if sequence_nbr == self.write_pos:
-            self.write(data, metadata)
-            return COMMIT_RESPONSE.handled
-        elif sequence_nbr < self.write_pos:
-            return COMMIT_RESPONSE.unhandled
-        else:
-            return COMMIT_RESPONSE.invalid
+        self.write(data, metadata)
