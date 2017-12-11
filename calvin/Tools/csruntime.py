@@ -361,11 +361,14 @@ def runtime_certificate(rt_attributes):
             else:
                 _log.debug("Runtime certificate available")
 
+global args
 def exithandler(sig=None, stack=None):
-  tracing.finish()
+  global args
+  tracing.finish(args.name)
   os._exit(0)
 
 def main():
+    global args
     atexit.register(exithandler)
     
     args = parse_arguments()
