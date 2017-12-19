@@ -104,17 +104,17 @@ def refresh_method_id(method):
 
 ##### Generic store tracepoint
 # This binds to a store function
-def _store_ctf(int typeid, int actorid, unsigned int methodid, double value):
-  global buffer, bufferIndex, bufferSize, wrapped
-  buffer[bufferIndex].type = typeid
-  buffer[bufferIndex].timestamp = long(time.time()*1000000000)
-  buffer[bufferIndex].actor = actorid
-  buffer[bufferIndex].method = methodid
-  buffer[bufferIndex].value = value
-  bufferIndex += 1
-  if bufferIndex == bufferSize:
-    bufferIndex = 0
-    wrapped = True
+#def _store_ctf(int typeid, int actorid, unsigned int methodid, value):
+#  global buffer, bufferIndex, bufferSize, wrapped
+#  buffer[bufferIndex].type = typeid
+#  buffer[bufferIndex].timestamp = long(time.time()*1000000000)
+#  buffer[bufferIndex].actor = actorid
+#  buffer[bufferIndex].method = methodid
+#  buffer[bufferIndex].value = value
+#  bufferIndex += 1
+#  if bufferIndex == bufferSize:
+#    bufferIndex = 0
+#    wrapped = True
 
 # ĹTTng tracepoints
 cdef extern:
@@ -122,6 +122,7 @@ cdef extern:
   void lttng_calvin_actor_fire_exit(const char *)
   void lttng_calvin_actor_method_fire(const char * actor_id, const char * method_id)
   void lttng_calvin_actor_method_fire_d(const char * actor_id, const char * method_id, double value)
+  void lttng_calvin_actor_method_fire_dd(const char * actor_id, const char * method_id, double value1, double value2)
 
 # LTTng function dict
 lttngf = {
@@ -131,12 +132,15 @@ lttngf = {
   3: lambda aid,mid,value: lttng_calvin_actor_method_fire_d(actors[aid],methods[mid],value),
 };
 
-def _store_lttng(int typeid, int actorid, unsigned int methodid, double value):
-  lttngf[typeid](actorid, methodid, value)
+def _store_lttng(int typeid, int actorid, unsigned int methodid, value):
+  if not isinstance(value, (list, tuple)):
+    lttngf[typeid](actorid, methodid, value)
+  else:
+    lttng_calvin_actor_method_fire_dd(actors[actorid],methods[methodid],value[0],value[1])
     
-def _store_both(int typeid, int actorid, unsigned int methodid, double value):
-  _store_lttng(typeid, actorid, methodid, value)
-  _store_ctf(typeid, actorid, methodid, value)
+#def _store_both(int typeid, int actorid, unsigned int methodid, value):
+#  _store_lttng(typeid, actorid, methodid, value)
+#  _store_ctf(typeid, actorid, methodid, value)
 
 store = _store_lttng
 
