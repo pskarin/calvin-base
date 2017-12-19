@@ -31,7 +31,7 @@ class CollectSingleSlot(object):
         super(CollectSingleSlot, self).__init__()
         # Set default queue length to 4 if not specified
 
-        self.token = None
+        self.token = Token(0)
         self.direction = port_properties.get('direction', 'in')
         self.nbr_peers = port_properties.get('nbr_peers', 1)
         self.readers = set()
@@ -51,7 +51,7 @@ class CollectSingleSlot(object):
         if remap is None:
             state = {
                 'queuetype': self._type,
-                'token': self.token,
+                'token': self.token.encode(),
                 'readers': list(self.readers),
                 'read_ready': self.read_ready,
                 'tentative_read_ready': self.tentative_read_ready,
@@ -188,9 +188,9 @@ class CollectSingleSlot(object):
         self.token = data
         
         # Set all readers to True
-        for metadata in self.tentative_read_ready:
-            self.tentative_read_ready[metadata] = True
-
+        for reader in self.tentative_read_ready:
+            self.tentative_read_ready[reader] = True
+            self.read_ready[reader] = True
         return True
 
     def slots_available(self, length, metadata):
@@ -201,7 +201,7 @@ class CollectSingleSlot(object):
             return False
         if metadata not in self.readers:
             raise Exception('No reader %s in %s' % (metadata, self.readers))
-        return self.tentative_read_ready[metadata] 
+        return self.read_ready[metadata] 
 
     #
     # Reading is done tentatively until committed
@@ -216,7 +216,6 @@ class CollectSingleSlot(object):
         return self.token
 
     def commit(self, metadata):
-        _log.debug('COMMIT EXHAUSTING???')
         self.read_ready[metadata] = self.tentative_read_ready[metadata]
         remove = []
         for peer_id, exhausted_tokens in self.exhausted_tokens.items():
@@ -253,3 +252,4 @@ class CollectSingleSlot(object):
 
     def com_write(self, data, metadata, sequence_nbr):
         self.write(data, metadata)
+        return COMMIT_RESPONSE.handled
