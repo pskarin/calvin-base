@@ -369,7 +369,7 @@ class Actor(object):
                              disable_transition_checks=disable_transition_checks,
                              disable_state_checks=disable_state_checks)
         # self.metering.add_actor_info(self)
-        self.monitorId = tracing.register_actor(self._type)
+        self.monitorId = tracing.register_actor(self._name)
         self.methodId = []
         for method in self.__class__.action_priority:
             self.methodId.append(tracing.register_method(method.__name__))
@@ -382,7 +382,7 @@ class Actor(object):
     def setup_complete(self):
         self.fsm.transition_to(Actor.STATUS.READY) 
 
-        self.monitorId = tracing.get_actor_id(self._type)
+        self.monitorId = tracing.get_actor_id(self._name)
         self.methodId = []
         for method in self.__class__.action_priority:
             self.methodId.append(tracing.refresh_method_id(method.__name__))
