@@ -203,6 +203,12 @@ class CollectSingleSlot(object):
             raise Exception('No reader %s in %s' % (metadata, self.readers))
         return self.read_ready[metadata] 
 
+    def num_tokens(self, metadata):
+        if metadata not in self.readers:
+            raise Exception("No reader %s in %s" % (metadata, self.readers))
+        if self.read_ready[metadata]: return 1
+        return 0
+
     #
     # Reading is done tentatively until committed
     #

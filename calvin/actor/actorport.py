@@ -272,6 +272,18 @@ class InPort(Port):
             metadata = self.id
         return self.queue.tokens_available(length, metadata)
 
+    def num_tokens(self, metadata=None):
+        """Used by actor (owner) to check number of tokens on the port."""
+        if metadata is None:
+            metadata = self.id
+        return self.queue.num_tokens(metadata)
+
+    def get_token_from_top(self, index, metadata=None):
+        """Peek into queue"""
+        if metadata is None:
+            metadata = self.id
+        return self.queue.get_token_from_top(index, metadata)
+        
     def get_peers(self):
         peers = []
         for ep in self.endpoints:

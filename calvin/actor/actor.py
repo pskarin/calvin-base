@@ -91,6 +91,7 @@ def condition(action_input=[], action_output=[]):
 
         @functools.wraps(action_method)
         def condition_wrapper(self):
+            self.pre_condition_wrapper()
             #
             # Check if input ports have enough tokens. Note that all([]) evaluates to True
             #
@@ -101,13 +102,14 @@ def condition(action_input=[], action_output=[]):
             output_ok = all(self.outports[portname].tokens_available(1) for portname in action_output)
 
             if not input_ok or not output_ok:
-                return (False, output_ok, ())
+                return (False, output_ok, (), None)
             #
             # Build the arguments for the action from the input port(s)
             #
             exhausted_ports = set()
             exception = False
             args = []
+            lengths = []
             for portname in action_input:
                 port = self.inports[portname]
                 token, exhaust = port.read()
@@ -116,6 +118,7 @@ def condition(action_input=[], action_output=[]):
                 args.append(token if is_exception_token else token.value )
                 if exhaust:
                    exhausted_ports.add(port)
+                lengths.append(port.num_tokens())
             #
             # Check for exceptional conditions
             #
@@ -145,7 +148,10 @@ def condition(action_input=[], action_output=[]):
                 port = self.outports[portname]
                 port.write_token(retval if isinstance(retval, Token) else Token(retval))
 
-            return (True, True, exhausted_ports)
+            minmax = None
+            if not len(lengths) == 0:
+                minmax = (min(lengths), max(lengths))
+            return (True, True, exhausted_ports, minmax)
 
         return condition_wrapper
     return wrap
@@ -164,7 +170,7 @@ def stateguard(action_guard):
         @functools.wraps(action_method)
         def guard_wrapper(self, *args):
             if not action_guard(self):
-                return (False, True, ())
+                return (False, True, (), None)
             return action_method(self, *args)
 
         return guard_wrapper
@@ -375,6 +381,19 @@ class Actor(object):
             self.methodId.append(tracing.register_method(method.__name__))
         self.monitor_value = None
 
+    def log_queue_precond(self, xk, discarded, time):
+      tracing.store(tracing.QUEUE_PRECOND, self.monitorId, 0, (xk, discarded, time))
+
+    def pre_condition_wrapper(self):
+        """ Processed before condition is evaluated. Allows for queue manipulation etc """
+        pass
+
+    def signal_will_migrate(self):
+        tracing.store(tracing.ACTOR_MIGRATE, self.monitorId, 0, 0)
+
+    def signal_did_migrate(self):
+        tracing.store(tracing.ACTOR_MIGRATED, self.monitorId, 0, 0)
+
     def set_authorization_checks(self, authorization_checks):
         self.authorization_checks = authorization_checks
 
@@ -580,7 +599,7 @@ class Actor(object):
         while not done:
             for ai in range(len(self.__class__.action_priority)):
                 action_method = self.__class__.action_priority[ai]
-                did_fire, output_ok, exhausted = action_method(self)
+                did_fire, output_ok, exhausted, minmax = action_method(self)
                 actor_did_fire |= did_fire
                 # Action firing should fire the first action that can fire,
                 # hence when fired start from the beginning priority list
@@ -590,8 +609,9 @@ class Actor(object):
                       self.monitor_value = None
                     else:
                       tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], 0)
+                    if not minmax == None:                    
+                      tracing.store(tracing.QUEUE_MINMAX, self.monitorId, self.methodId[ai], minmax)
                     break
-
             #
             # We end up here when an action fired or when all actions have failed to fire
             #
@@ -621,13 +641,12 @@ class Actor(object):
         Returns tuple (did_fire, output_ok, exhausted)
         """
         tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0, 0)
-
         #
         # Go over the action priority list once
         #
         for ai in range(len(self.__class__.action_priority)):
             action_method = self.__class__.action_priority[ai]
-            did_fire, output_ok, exhausted = action_method(self)
+            did_fire, output_ok, exhausted, minmax = action_method(self)
             # Action firing should fire the first action that can fire
             if did_fire:
                 if self.monitor_value is not None:
@@ -635,10 +654,11 @@ class Actor(object):
                     self.monitor_value = None
                 else:
                     tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], 0)
+                tracing.store(tracing.QUEUE_MINMAX, self.monitorId, self.methodId[ai], minmax)
                 break
 
         tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0, 0)
-        return did_fire, output_ok, exhausted
+        return did_fire, output_ok, exhausted, None
 
 
     def enabled(self):

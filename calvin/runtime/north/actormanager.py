@@ -189,6 +189,7 @@ class ActorManager(object):
             a.deserialize(state)
             self.node.pm.add_ports_of_actor(a)
             if did_migrate:
+                a.signal_did_migrate()
                 a.did_migrate()
             a.setup_complete()
         except Exception as e:
@@ -387,6 +388,7 @@ class ActorManager(object):
                 callback(status=response.CalvinResponse(True))
             return
         actor._migrating_to = node_id
+        actor.signal_will_migrate() # Internal for tracing etc
         actor.will_migrate()
         actor_type = actor._type
         ports = actor.connections(self.node.id)

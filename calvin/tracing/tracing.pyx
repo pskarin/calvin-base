@@ -9,6 +9,10 @@ ACTOR_FIRE_ENTER = 0
 ACTOR_FIRE_EXIT = 1
 ACTOR_METHOD_FIRE = 2
 ACTOR_METHOD_FIRE_D = 3
+QUEUE_MINMAX = 4
+ACTOR_MIGRATE = 5
+ACTOR_MIGRATED = 6
+QUEUE_PRECOND = 7
 
 ##### Define trace buffer
 
@@ -123,6 +127,11 @@ cdef extern:
   void lttng_calvin_actor_method_fire(const char * actor_id, const char * method_id)
   void lttng_calvin_actor_method_fire_d(const char * actor_id, const char * method_id, double value)
   void lttng_calvin_actor_method_fire_dd(const char * actor_id, const char * method_id, double value1, double value2)
+  void lttng_calvin_queue_minmax(const char * actor_id, const char * method_id, int value1, int value2)
+  void lttng_calvin_actor_migrate(const char * actor_id)
+  void lttng_calvin_actor_migrated(const char * actor_id)
+  void lttng_calvin_queue_precond(const char * actor, const char * queue, int discarded, double off)
+
 
 # LTTng function dict
 lttngf = {
@@ -130,13 +139,42 @@ lttngf = {
   1: lambda aid,mid,value: lttng_calvin_actor_fire_exit(actors[aid]),
   2: lambda aid,mid,value: lttng_calvin_actor_method_fire(actors[aid],methods[mid]),
   3: lambda aid,mid,value: lttng_calvin_actor_method_fire_d(actors[aid],methods[mid],value),
+  4: lambda aid,mid,value: 0,
+  5: lambda aid,mid,value: lttng_calvin_actor_migrate(actors[aid]),
+  6: lambda aid,mid,value: lttng_calvin_actor_migrated(actors[aid]),
 };
+
+lttngf2 = {
+  0: 0,
+  1: 0,
+  2: 0,
+  3: lambda aid,mid,value: lttng_calvin_actor_method_fire_dd(actors[aid],methods[mid],value[0],value[1]),
+  4: lambda aid,mid,value: lttng_calvin_queue_minmax(actors[aid],methods[mid],value[0],value[1]),
+  5: 0,
+  6: 0,
+};
+
+lttngf3 = {
+  0: 0,
+  1: 0,
+  2: 0,
+  3: 0,
+  4: 0,
+  5: 0,
+  6: 0,
+  7: lambda aid,mid,value: lttng_calvin_queue_precond(actors[aid],value[0], value[1], value[2])
+};
+
 
 def _store_lttng(int typeid, int actorid, unsigned int methodid, value):
   if not isinstance(value, (list, tuple)):
     lttngf[typeid](actorid, methodid, value)
+  elif len(value) == 2:
+    lttngf2[typeid](actorid,methodid,value)
+  elif len(value) == 3:
+    lttngf3[typeid](actorid,methodid,value)
   else:
-    lttng_calvin_actor_method_fire_dd(actors[actorid],methods[methodid],value[0],value[1])
+    raise Exception("Invalid input to store_lttng")
     
 #def _store_both(int typeid, int actorid, unsigned int methodid, value):
 #  _store_lttng(typeid, actorid, methodid, value)
