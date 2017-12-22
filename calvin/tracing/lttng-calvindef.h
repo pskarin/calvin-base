@@ -128,6 +128,48 @@ TRACEPOINT_EVENT(
     )
 )
 
+// Method fire trhee double valued data
+TRACEPOINT_EVENT(
+    com_ericsson_calvin,  // Tracepoint provider
+    actor_method_fire_ddd, // Tracepoint name
+    TP_ARGS(              // Input arguments
+        const char *, actor_id,
+        const char *, method_id,
+        double, value1,
+        double, value2,
+				double, value3
+    ),
+    TP_FIELDS(            // Output event fields
+        ctf_string(actor, actor_id)
+        ctf_string(method, method_id)
+        ctf_float(double, value1, value1)
+        ctf_float(double, value2, value2)
+        ctf_float(double, value3, value3)
+    )
+)
+
+// Method fire four double valued data
+TRACEPOINT_EVENT(
+    com_ericsson_calvin,  // Tracepoint provider
+    actor_method_fire_dddd, // Tracepoint name
+    TP_ARGS(              // Input arguments
+        const char *, actor_id,
+        const char *, method_id,
+        double, value1,
+        double, value2,
+				double, value3,
+				double, value4
+    ),
+    TP_FIELDS(            // Output event fields
+        ctf_string(actor, actor_id)
+        ctf_string(method, method_id)
+        ctf_float(double, value1, value1)
+        ctf_float(double, value2, value2)
+        ctf_float(double, value3, value3)
+        ctf_float(double, value4, value4)
+    )
+)
+
 TRACEPOINT_EVENT(
     com_ericsson_calvin,  // Tracepoint provider name
     queue_minmax,     		// Tracepoint name

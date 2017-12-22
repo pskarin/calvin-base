@@ -10,3 +10,5 @@ void lttng_calvin_queue_minmax(const char * actor_id, const char * method_id, in
 void lttng_calvin_actor_migrate(const char * actor_id) { tracepoint(com_ericsson_calvin, actor_migrate, actor_id); }
 void lttng_calvin_actor_migrated(const char * actor_id) { tracepoint(com_ericsson_calvin, actor_migrated, actor_id); }
 void lttng_calvin_queue_precond(const char * actor, const char * queue, int discarded, double off) { tracepoint(com_ericsson_calvin, queue_precond, actor, queue, discarded, off); }
+void lttng_calvin_actor_method_fire_dddd(const char * actor_id, const char * method_id, double value1, double value2, double value3, double value4) { tracepoint(com_ericsson_calvin, actor_method_fire_dddd, actor_id, method_id, value1, value2, value3, value4); }
+void lttng_calvin_actor_method_fire_ddd(const char * actor_id, const char * method_id, double value1, double value2, double value3) { tracepoint(com_ericsson_calvin, actor_method_fire_ddd, actor_id, method_id, value1, value2, value3); }

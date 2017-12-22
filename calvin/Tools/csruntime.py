@@ -369,13 +369,14 @@ def exithandler(sig=None, stack=None):
 
 def main():
     global args
-    atexit.register(exithandler)
     
     args = parse_arguments()
 
     if args.debug:
         import pdb
         pdb.set_trace()
+
+    atexit.register(exithandler)
 
     # Need to be before other calvin calls to set the common log file
     set_loglevel(args.loglevel, args.logfile)

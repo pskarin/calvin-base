@@ -4,16 +4,6 @@
 #      the module does lookup before forwarding to LTTng (which means transfering actor names as strings etc). The benefits however are a rich set of
 #      tools, real-time monitoring, low memory footprint and potentially trace time synchronization between peers.  
 
-##### Action types. These go into the typeid of CTF data.
-ACTOR_FIRE_ENTER = 0
-ACTOR_FIRE_EXIT = 1
-ACTOR_METHOD_FIRE = 2
-ACTOR_METHOD_FIRE_D = 3
-QUEUE_MINMAX = 4
-ACTOR_MIGRATE = 5
-ACTOR_MIGRATED = 6
-QUEUE_PRECOND = 7
-
 ##### Define trace buffer
 
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
@@ -127,54 +117,78 @@ cdef extern:
   void lttng_calvin_actor_method_fire(const char * actor_id, const char * method_id)
   void lttng_calvin_actor_method_fire_d(const char * actor_id, const char * method_id, double value)
   void lttng_calvin_actor_method_fire_dd(const char * actor_id, const char * method_id, double value1, double value2)
+  void lttng_calvin_actor_method_fire_ddd(const char * actor_id, const char * method_id, double value1, double value2, double value3)
+  void lttng_calvin_actor_method_fire_dddd(const char * actor_id, const char * method_id, double value1, double value2, double value3, double value4)
   void lttng_calvin_queue_minmax(const char * actor_id, const char * method_id, int value1, int value2)
   void lttng_calvin_actor_migrate(const char * actor_id)
   void lttng_calvin_actor_migrated(const char * actor_id)
   void lttng_calvin_queue_precond(const char * actor, const char * queue, int discarded, double off)
 
+##### Action types. These go into the typeid of CTF data.
+ACTOR_FIRE_ENTER = 0
+ACTOR_FIRE_EXIT = 1
+ACTOR_METHOD_FIRE = 2
+QUEUE_MINMAX = 3
+ACTOR_MIGRATE = 4
+ACTOR_MIGRATED = 5
+QUEUE_PRECOND = 6
 
-# LTTng function dict
-lttngf = {
-  0: lambda aid,mid,value: lttng_calvin_actor_fire_enter(actors[aid]),
-  1: lambda aid,mid,value: lttng_calvin_actor_fire_exit(actors[aid]),
-  2: lambda aid,mid,value: lttng_calvin_actor_method_fire(actors[aid],methods[mid]),
-  3: lambda aid,mid,value: lttng_calvin_actor_method_fire_d(actors[aid],methods[mid],value),
-  4: lambda aid,mid,value: 0,
-  5: lambda aid,mid,value: lttng_calvin_actor_migrate(actors[aid]),
-  6: lambda aid,mid,value: lttng_calvin_actor_migrated(actors[aid]),
-};
+# LTTng function lists
+lttngf = [
+[
+  lambda aid,mid: lttng_calvin_actor_fire_enter(actors[aid]),
+  lambda aid,mid: lttng_calvin_actor_fire_exit(actors[aid]),
+  lambda aid,mid: lttng_calvin_actor_method_fire(actors[aid],methods[mid]),
+  lambda aid,mid: 0,
+  lambda aid,mid: lttng_calvin_actor_migrate(actors[aid]),
+  lambda aid,mid: lttng_calvin_actor_migrated(actors[aid]),
+	0,
+],
+[
+	0,
+	0,
+	lambda aid,mid,value: lttng_calvin_actor_method_fire_d(actors[aid],methods[mid],value[0]),
+	0,
+	0,
+	0,
+	0,
+],
+[
+	0,
+	0,
+	lambda aid,mid,value: lttng_calvin_actor_method_fire_dd(actors[aid],methods[mid],value[0],value[1]),
+	lambda aid,mid,value: lttng_calvin_queue_minmax(actors[aid],methods[mid],value[0],value[1]),
+	0,
+	0,
+	0,
+],
+[
+	0,
+	0,
+	lambda aid,mid,value: lttng_calvin_actor_method_fire_ddd(actors[aid],methods[mid],value[0],value[1],value[2]),
+  0,
+  0,
+  0,
+  lambda aid,mid,value: lttng_calvin_queue_precond(actors[aid],value[0], value[1], value[2])
+],
+[
+	0,
+	0,
+	lambda aid,mid,value: lttng_calvin_actor_method_fire_dddd(actors[aid],methods[mid],value[0],value[1],value[2],value[3]),
+	0,
+	0,
+	0,
+	0,
+]]
 
-lttngf2 = {
-  0: 0,
-  1: 0,
-  2: 0,
-  3: lambda aid,mid,value: lttng_calvin_actor_method_fire_dd(actors[aid],methods[mid],value[0],value[1]),
-  4: lambda aid,mid,value: lttng_calvin_queue_minmax(actors[aid],methods[mid],value[0],value[1]),
-  5: 0,
-  6: 0,
-};
 
-lttngf3 = {
-  0: 0,
-  1: 0,
-  2: 0,
-  3: 0,
-  4: 0,
-  5: 0,
-  6: 0,
-  7: lambda aid,mid,value: lttng_calvin_queue_precond(actors[aid],value[0], value[1], value[2])
-};
-
-
-def _store_lttng(int typeid, int actorid, unsigned int methodid, value):
-  if not isinstance(value, (list, tuple)):
-    lttngf[typeid](actorid, methodid, value)
-  elif len(value) == 2:
-    lttngf2[typeid](actorid,methodid,value)
-  elif len(value) == 3:
-    lttngf3[typeid](actorid,methodid,value)
+def _store_lttng(int typeid, int actorid, unsigned int methodid, value = None):
+  if value == None:
+    lttngf[0][typeid](actorid, methodid)
+  elif not isinstance(value, (list, tuple)):
+    lttngf[1][typeid](actorid, methodid, (value, ))
   else:
-    raise Exception("Invalid input to store_lttng")
+    lttngf[len(value)][typeid](actorid,methodid,value)
     
 #def _store_both(int typeid, int actorid, unsigned int methodid, value):
 #  _store_lttng(typeid, actorid, methodid, value)
@@ -248,12 +262,12 @@ def finish(name):
                 
         # Write event
         ctfc.addUint32(&packet, buffer[i].actor)
-        if buffer[i].type == ACTOR_METHOD_FIRE or buffer[i].type == ACTOR_METHOD_FIRE_D:
+        if buffer[i].type == ACTOR_METHOD_FIRE:
           ctfc.addUint32(&packet, buffer[i].method)
-          if buffer[i].type == ACTOR_METHOD_FIRE_D:
-            ctfc.addDouble(&packet, buffer[i].value)
-          else:
-            ctfc.addDouble(&packet, 0)
+#          if buffer[i].type == ACTOR_METHOD_FIRE_D:
+#            ctfc.addDouble(&packet, buffer[i].value)
+#          else:
+#            ctfc.addDouble(&packet, 0)
 
         ctfc.checkpoint(&packet, buffer[i].timestamp-clock_offset)
 

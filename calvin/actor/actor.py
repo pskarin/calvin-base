@@ -380,6 +380,7 @@ class Actor(object):
         for method in self.__class__.action_priority:
             self.methodId.append(tracing.register_method(method.__name__))
         self.monitor_value = None
+        self.monitor_value_0 = None
 
     def log_queue_precond(self, xk, discarded, time):
       tracing.store(tracing.QUEUE_PRECOND, self.monitorId, 0, (xk, discarded, time))
@@ -389,10 +390,10 @@ class Actor(object):
         pass
 
     def signal_will_migrate(self):
-        tracing.store(tracing.ACTOR_MIGRATE, self.monitorId, 0, 0)
+        tracing.store(tracing.ACTOR_MIGRATE, self.monitorId, 0)
 
     def signal_did_migrate(self):
-        tracing.store(tracing.ACTOR_MIGRATED, self.monitorId, 0, 0)
+        tracing.store(tracing.ACTOR_MIGRATED, self.monitorId, 0)
 
     def set_authorization_checks(self, authorization_checks):
         self.authorization_checks = authorization_checks
@@ -406,6 +407,7 @@ class Actor(object):
         for method in self.__class__.action_priority:
             self.methodId.append(tracing.refresh_method_id(method.__name__))
         self.monitor_value = None
+        self.monitor_value_0 = None
 
     def init(self):
         raise Exception("Implementing 'init()' is mandatory.")
@@ -585,7 +587,7 @@ class Actor(object):
         # First make sure we are allowed to run
         #
 
-        tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0, 0)
+        tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0)
         
         if not self._authorized():
             return False
@@ -604,12 +606,12 @@ class Actor(object):
                 # Action firing should fire the first action that can fire,
                 # hence when fired start from the beginning priority list
                 if did_fire:
-                    if self.monitor_value is not None:
-                      tracing.store(tracing.ACTOR_METHOD_FIRE_D, self.monitorId, self.methodId[ai], self.monitor_value)
-                      self.monitor_value = None
-                    else:
-                      tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], 0)
-                    if not minmax == None:                    
+                    if not self.monitor_value_0 == None:
+                      tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], self.monitor_value_0)
+                      self.monitor_value_0 = None
+                    tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], self.monitor_value)
+                    self.monitor_value = None
+                    if not minmax == None:
                       tracing.store(tracing.QUEUE_MINMAX, self.monitorId, self.methodId[ai], minmax)
                     break
             #
@@ -631,7 +633,7 @@ class Actor(object):
                 self._handle_exhaustion(exhausted, output_ok)
                 done = True
 
-        tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0, 0)
+        tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0)
         return actor_did_fire
 
     @verify_status([STATUS.ENABLED])
@@ -640,7 +642,7 @@ class Actor(object):
         Fire an actor.
         Returns tuple (did_fire, output_ok, exhausted)
         """
-        tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0, 0)
+        tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0)
         #
         # Go over the action priority list once
         #
@@ -649,15 +651,16 @@ class Actor(object):
             did_fire, output_ok, exhausted, minmax = action_method(self)
             # Action firing should fire the first action that can fire
             if did_fire:
-                if self.monitor_value is not None:
-                    tracing.store(tracing.ACTOR_METHOD_FIRE_D, self.monitorId, self.methodId[ai], self.monitor_value)
-                    self.monitor_value = None
-                else:
-                    tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], 0)
+              if not self.monitor_value_0 == None:
+                tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], self.monitor_value_0)
+                self.monitor_value_0 = None
+              tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], self.monitor_value)
+              self.monitor_value = None
+              if not minmax == None:
                 tracing.store(tracing.QUEUE_MINMAX, self.monitorId, self.methodId[ai], minmax)
-                break
+              break
 
-        tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0, 0)
+        tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0)
         return did_fire, output_ok, exhausted, None
 
 
