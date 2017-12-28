@@ -17,3 +17,4 @@ pyasn1>=0.1.9
 pystache==0.5.4
 jsonschema==2.6.0
 Cython>=0.27.3
+filterpy>=1.1.0
