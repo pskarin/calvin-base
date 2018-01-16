@@ -672,7 +672,8 @@ class Deployer(object):
                                                                                  actor_def, cb=cb))
                 return
             self.instantiate(actor_name, info, cb=cb)
-        except Exception:
+        except Exception as ex:
+            _log.warning("{} will be shadowed because: {}".format(actor_name, ex))
             # Still want to create shadow actor.
             info['shadow_actor'] = True
             self.instantiate(actor_name, info, cb=cb)
