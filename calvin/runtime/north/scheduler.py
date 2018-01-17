@@ -239,13 +239,7 @@ class BaseScheduler(object):
         while not done:
             did_fire, output_ok, exhausted, minmax = actor.fire()
             actor_did_fire |= did_fire
-            if did_fire:
-                #
-                # Limit time given to actors even if it could continue a new round of firing
-                #
-                time_spent = time.time() - start_time
-                done = time_spent > 0.020
-            else:
+            if not did_fire:
                 #
                 # We reached the end of the list without ANY firing during this round
                 # => handle exhaustion and return
