@@ -22,6 +22,8 @@ import traceback
 import logging
 import os
 import socket
+import calvin.tracing as tracing
+import atexit
 
 # Calvin related imports must be in functions, to be able to set logfile before imports
 _conf = None
@@ -64,7 +66,7 @@ Start runtime, compile calvinscript and deploy application.
                            To enable on specific modules use 'module:level'")
 
     argparser.add_argument('-f', '--logfile', dest='logfile', action="store", default=None, type=str,
-                           help="Set logging to file, specify filename")
+                           help="Set logging to file, specify filename (using 'syslog' sends the log to syslog)")
 
     argparser.add_argument('-w', '--wait', dest='wait', metavar='sec', default=2, type=int,
                            help='wait for sec seconds before quitting (0 means forever).')
@@ -107,6 +109,10 @@ Start runtime, compile calvinscript and deploy application.
     argparser.add_argument('--uuid', metavar='<uuid>', type=str,
                             help="Set the UUID of the runtime. Does not apply when security is enabled.",
                             dest='uuid')
+
+    argparser.add_argument('--probe-buffer-size', metavar='<size>', type=int,
+                           help='Number of entries into store in circular probe buffer',
+                           dest='probe_buffer_size', default=1)
 
     return argparser.parse_args()
 
@@ -355,17 +361,28 @@ def runtime_certificate(rt_attributes):
             else:
                 _log.debug("Runtime certificate available")
 
+global args
+def exithandler(sig=None, stack=None):
+  global args
+  tracing.finish(args.name)
+  os._exit(0)
 
 def main():
+    global args
+    
     args = parse_arguments()
 
     if args.debug:
         import pdb
         pdb.set_trace()
 
+    atexit.register(exithandler)
+
     # Need to be before other calvin calls to set the common log file
     set_loglevel(args.loglevel, args.logfile)
     set_config_from_args(args)
+
+    tracing.allocate(args.probe_buffer_size)
 
     app_info = None
 

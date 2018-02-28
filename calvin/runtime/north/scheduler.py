@@ -237,7 +237,7 @@ class BaseScheduler(object):
         #
         done = False
         while not done:
-            did_fire, output_ok, exhausted = actor.fire()
+            did_fire, output_ok, exhausted, minmax = actor.fire()
             actor_did_fire |= did_fire
             if did_fire:
                 #

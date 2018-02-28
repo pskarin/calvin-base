@@ -21,3 +21,5 @@ build/
 *_BASE_*
 *_LOCAL_*
 *_REMOTE_*
+calvin/tracing/ctf.c
+calvin/tracing/tracing.c

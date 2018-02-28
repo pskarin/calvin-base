@@ -15,13 +15,24 @@
 # limitations under the License.
 
 import os
-from setuptools import setup
+from setuptools import setup, Extension
+from Cython.Build import cythonize
 
 
 def read_description(fname):
     with open(os.path.join(os.path.dirname(__file__), fname)) as fp:
         return fp.read()
 
+extensions = [
+  Extension('ctf',
+    sources = ['calvin/tracing/ctf.pyx']
+  ),
+  Extension('calvin.tracing',
+    include_dirs = ['calvin/tracing'],
+    libraries = ['lttng-ust'],
+    sources = ['calvin/tracing/lttng-calvinprobes.c', 'calvin/tracing/lttng-calvindef.c', 'calvin/tracing/tracing.pyx']
+  ),
+]
 
 setup(name='calvin',
       version='0.8',
@@ -46,13 +57,14 @@ setup(name='calvin',
           'netifaces==0.10.4',
           'pyOpenSSL==17.1.0',
           'cryptography==1.9.0',
-          'passlib==1.7.0',
+          'passlib==1.7.1',
           'PyJWT==1.4.0',
           'service-identity==17.0.0',
           'ndg-httpsclient==0.4.2',
-          'pyasn1>=0.1.9',
+          'pyasn1>=0.4.1',
           'pystache==0.5.4',
-          'jsonschema==2.6.0'
+          'jsonschema==2.6.0',
+          'rpcudp<3.0.0'
       ],
       description="Calvin is a distributed runtime and development framework for an actor based dataflow"
                   "programming methodology",
@@ -84,5 +96,6 @@ setup(name='calvin',
               'csweb=calvin.Tools.www.csweb:main',
               'csviz=calvin.Tools.csviz:main'
           ]
-      }
+      },
+      ext_modules = cythonize(extensions)
       )

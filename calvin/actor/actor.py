@@ -32,6 +32,7 @@ from calvin.utilities.calvin_callback import CalvinCB
 from calvin.csparser.port_property_syntax import get_port_property_capabilities, get_port_property_runtime
 from calvin.runtime.north.calvinsys import get_calvinsys
 from calvin.runtime.north.calvinlib import get_calvinlib
+import calvin.tracing as tracing
 
 _log = get_logger(__name__)
 
@@ -91,6 +92,7 @@ def condition(action_input=[], action_output=[]):
 
         @functools.wraps(action_method)
         def condition_wrapper(self):
+            self.pre_condition_wrapper()
             #
             # Check if input ports have enough tokens. Note that all([]) evaluates to True
             #
@@ -101,13 +103,14 @@ def condition(action_input=[], action_output=[]):
             output_ok = all(self.outports[portname].tokens_available(1) for portname in action_output)
 
             if not input_ok or not output_ok:
-                return (False, output_ok, ())
+                return (False, output_ok, (), None)
             #
             # Build the arguments for the action from the input port(s)
             #
             exhausted_ports = set()
             exception = False
             args = []
+            lengths = []
             for portname in action_input:
                 port = self.inports[portname]
                 token, exhaust = port.read()
@@ -116,6 +119,7 @@ def condition(action_input=[], action_output=[]):
                 args.append(token if is_exception_token else token.value )
                 if exhaust:
                    exhausted_ports.add(port)
+                lengths.append(port.num_tokens())
             #
             # Check for exceptional conditions
             #
@@ -145,7 +149,10 @@ def condition(action_input=[], action_output=[]):
                 port = self.outports[portname]
                 port.write_token(retval if isinstance(retval, Token) else Token(retval))
 
-            return (True, True, exhausted_ports)
+            minmax = None
+            if not len(lengths) == 0:
+                minmax = (min(lengths), max(lengths))
+            return (True, True, exhausted_ports, minmax)
 
         return condition_wrapper
     return wrap
@@ -164,7 +171,7 @@ def stateguard(action_guard):
         @functools.wraps(action_method)
         def guard_wrapper(self, *args):
             if not action_guard(self):
-                return (False, True, ())
+                return (False, True, (), None)
             return action_method(self, *args)
 
         return guard_wrapper
@@ -322,6 +329,7 @@ class Actor(object):
     @name.setter
     def name(self, value):
         self._name = value
+        tracing.update_actor(self.monitorId, self._name)
 
     @property
     def migration_info(self):
@@ -368,13 +376,39 @@ class Actor(object):
                              disable_transition_checks=disable_transition_checks,
                              disable_state_checks=disable_state_checks)
         # self.metering.add_actor_info(self)
+        self.monitorId = tracing.register_actor(self._name)
+        self.methodId = []
+        for method in self.__class__.action_priority:
+            self.methodId.append(tracing.register_method(method.__name__))
+        self.monitor_value = None
+        self.monitor_value_0 = None
+
+    def log_queue_precond(self, xk, discarded, time):
+      tracing.store(tracing.QUEUE_PRECOND, self.monitorId, 0, (xk, discarded, time))
+
+    def pre_condition_wrapper(self):
+        """ Processed before condition is evaluated. Allows for queue manipulation etc """
+        pass
+
+    def signal_will_migrate(self):
+        tracing.store(tracing.ACTOR_MIGRATE, self.monitorId, 0)
+
+    def signal_did_migrate(self):
+        tracing.store(tracing.ACTOR_MIGRATED, self.monitorId, 0)
 
     def set_authorization_checks(self, authorization_checks):
         self.authorization_checks = authorization_checks
 
     @verify_status([STATUS.LOADED])
     def setup_complete(self):
-        self.fsm.transition_to(Actor.STATUS.READY)
+        self.fsm.transition_to(Actor.STATUS.READY) 
+
+        self.monitorId = tracing.get_actor_id(self._name)
+        self.methodId = []
+        for method in self.__class__.action_priority:
+            self.methodId.append(tracing.refresh_method_id(method.__name__))
+        self.monitor_value = None
+        self.monitor_value_0 = None
 
     def init(self):
         raise Exception("Implementing 'init()' is mandatory.")
@@ -460,6 +494,7 @@ class Actor(object):
         # We could at least have the courtesy to inform the scheduler about our identity...
         get_calvinsys().scheduler_wakeup(self)
         
+
 
     @verify_status([STATUS.ENABLED, STATUS.PENDING, STATUS.DENIED, STATUS.MIGRATABLE])
     def did_disconnect(self, port):
@@ -552,6 +587,9 @@ class Actor(object):
         #
         # First make sure we are allowed to run
         #
+
+        tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0)
+        
         if not self._authorized():
             return False
 
@@ -562,17 +600,21 @@ class Actor(object):
         #
         done = False
         while not done:
-            for action_method in self.__class__.action_priority:
-                did_fire, output_ok, exhausted = action_method(self)
+            for ai in range(len(self.__class__.action_priority)):
+                action_method = self.__class__.action_priority[ai]
+                did_fire, output_ok, exhausted, minmax = action_method(self)
                 actor_did_fire |= did_fire
                 # Action firing should fire the first action that can fire,
                 # hence when fired start from the beginning priority list
                 if did_fire:
-                    # # FIXME: Add hooks for metering and probing
-                    # self.metering.fired(self._id, action_method.__name__)
-                    # self.control.log_actor_firing( ... )
+                    if not self.monitor_value_0 == None:
+                      tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], self.monitor_value_0)
+                      self.monitor_value_0 = None
+                    tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], self.monitor_value)
+                    self.monitor_value = None
+                    if not minmax == None:
+                      tracing.store(tracing.QUEUE_MINMAX, self.monitorId, self.methodId[ai], minmax)
                     break
-
             #
             # We end up here when an action fired or when all actions have failed to fire
             #
@@ -592,6 +634,7 @@ class Actor(object):
                 self._handle_exhaustion(exhausted, output_ok)
                 done = True
 
+        tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0)
         return actor_did_fire
 
     @verify_status([STATUS.ENABLED])
@@ -600,15 +643,26 @@ class Actor(object):
         Fire an actor.
         Returns tuple (did_fire, output_ok, exhausted)
         """
+        tracing.store(tracing.ACTOR_FIRE_ENTER, self.monitorId, 0)
         #
         # Go over the action priority list once
         #
-        for action_method in self.__class__.action_priority:
-            did_fire, output_ok, exhausted = action_method(self)
+        for ai in range(len(self.__class__.action_priority)):
+            action_method = self.__class__.action_priority[ai]
+            did_fire, output_ok, exhausted, minmax = action_method(self)
             # Action firing should fire the first action that can fire
             if did_fire:
-                break
-        return did_fire, output_ok, exhausted
+              if not self.monitor_value_0 == None:
+                tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], self.monitor_value_0)
+                self.monitor_value_0 = None
+              tracing.store(tracing.ACTOR_METHOD_FIRE, self.monitorId, self.methodId[ai], self.monitor_value)
+              self.monitor_value = None
+              if not minmax == None:
+                tracing.store(tracing.QUEUE_MINMAX, self.monitorId, self.methodId[ai], minmax)
+              break
+
+        tracing.store(tracing.ACTOR_FIRE_EXIT, self.monitorId, 0)
+        return did_fire, output_ok, exhausted, None
 
 
     def enabled(self):

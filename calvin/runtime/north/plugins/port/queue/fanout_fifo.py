@@ -222,6 +222,13 @@ class FanoutFIFO(object):
             raise Exception("No reader %s in %s" % (metadata, self.readers))
         return (self.write_pos - self.tentative_read_pos[metadata]) >= length
 
+    def num_tokens(self, metadata):
+        if metadata not in self.readers:
+            raise Exception("No reader %s in %s" % (metadata, self.readers))
+        return (self.write_pos - self.tentative_read_pos[metadata])
+
+    def get_token_from_top(self, index, metadata):
+        return self.fifo[(self.read_pos[metadata]+index)%self.N]
     #
     # Reading is done tentatively until committed
     #

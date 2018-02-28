@@ -46,7 +46,7 @@ from calvin.utilities.security import security_modules_check
 from calvin.utilities.runtime_credentials import RuntimeCredentials
 from calvin.utilities import calvinuuid
 from calvin.utilities import certificate
-from calvin.utilities.calvinlogger import get_logger, set_file
+from calvin.utilities.calvinlogger import get_logger, set_file, log_set_node_name
 from calvin.utilities import calvinconfig
 from calvin.runtime.north.resource_monitor.cpu import CpuMonitor
 from calvin.runtime.north.resource_monitor.memory import MemMonitor
@@ -74,6 +74,8 @@ class Node(object):
     def __init__(self, uris, control_uri, attributes=None):
         super(Node, self).__init__()
         self.quitting = False
+
+        log_set_node_name(attributes['indexed_public']['node_name']['name'])
 
         # Warn if its not a uri
         if not isinstance(uris, list):
